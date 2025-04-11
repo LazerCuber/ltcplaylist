@@ -653,6 +653,37 @@
             /* Black background behind player */
         }
 
+        .close-player-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            z-index: calc(var(--z-sticky) + 1); /* Above player controls potentially */
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s ease, background-color 0.2s ease;
+        }
+
+        .close-player-btn:hover {
+            opacity: 1;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+
+        .close-player-btn svg {
+            width: 16px; /* Adjust size as needed */
+            height: 16px;
+        }
+
+        /* Player Container */
         .player-container {
             position: relative;
             padding-bottom: 56.25%;
@@ -1149,6 +1180,56 @@
                 align-items: flex-start; */
              }
         }
+
+        /* Pagination */
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 24px;
+            padding: 10px 0;
+            background-color: var(--surface-color);
+            border-radius: var(--border-radius-md);
+            box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border-color-light);
+            transition: var(--transition-default);
+            transition-property: background-color, border-color, box-shadow;
+        }
+
+        .pagination-controls button {
+            /* Use secondary style as base */
+            background-color: var(--surface-color-alt);
+            color: var(--text-color-muted);
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            box-shadow: none;
+            min-width: 80px; /* Ensure consistent button width */
+        }
+
+        .pagination-controls button:not(:disabled):hover {
+            background-color: var(--hover-bg-color);
+            color: var(--text-color);
+            transform: none;
+            box-shadow: none;
+        }
+
+        .pagination-controls button:disabled {
+            background-color: transparent;
+            color: var(--text-color-subtle);
+            opacity: 0.6;
+            cursor: not-allowed;
+            border: 1px solid var(--border-color-light);
+        }
+
+        .page-info {
+            font-size: 0.85rem;
+            color: var(--text-color-muted);
+            font-weight: 500;
+            min-width: 80px; /* Approx width */
+            text-align: center;
+        }
     </style>
 </head>
 
@@ -1279,6 +1360,13 @@
             </div>
 
             <div class="player-wrapper hidden" id="playerWrapper">
+                <button class="close-player-btn icon-button" id="closePlayerBtn" title="Close Player">
+                    <!-- SVG Close Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                    <span class="visually-hidden">Close Player</span>
+                </button>
                 <div class="player-container">
                     <div id="player"></div>
                 </div>
@@ -1286,6 +1374,11 @@
 
             <div class="video-grid" id="videoGrid">
                 <!-- Video cards -->
+            </div>
+            <div class="pagination-controls hidden" id="paginationControls">
+                <button id="prevPageBtn" disabled>Previous</button>
+                <span class="page-info" id="pageInfo"></span>
+                <button id="nextPageBtn" disabled>Next</button>
             </div>
             <div class="placeholder-message" id="videoPlaceholder">Create or select a playlist.</div>
         </main>
@@ -1322,8 +1415,14 @@
         const toastContainerEl = document.getElementById('toastContainer');
         const htmlEl = document.documentElement;
         const bodyEl = document.body;
+        const closePlayerBtn = document.getElementById('closePlayerBtn');
         const sidebarEl = document.querySelector('.sidebar');
         const sidebarResizerEl = document.getElementById('sidebarResizer');
+        // Pagination Elements
+        const paginationControlsEl = document.getElementById('paginationControls');
+        const prevPageBtn = document.getElementById('prevPageBtn');
+        const nextPageBtn = document.getElementById('nextPageBtn');
+        const pageInfoEl = document.getElementById('pageInfo');
 
         // --- State ---
         let playlists = [];
@@ -1339,6 +1438,9 @@
         let currentFont = 'sans';
         let isResizing = false;
         let lastSidebarWidth = null;
+        // Pagination State
+        const videosPerPage = 20; // Number of videos to show per page
+        let currentPage = 1;
 
         // --- Icons (Replace with actual SVG content or library calls) ---
         const ICONS = {
@@ -1477,6 +1579,27 @@
 
             // Drag and Drop Event Listeners
             setupDragAndDropListeners();
+
+            closePlayerBtn.addEventListener('click', handleClosePlayer); // Add listener for close button
+
+            // --- Pagination Listeners ---
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderVideos(); // Re-render videos for the new page
+                    // renderPaginationControls() is called by renderVideos
+                }
+            });
+            nextPageBtn.addEventListener('click', () => {
+                const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+                if (!currentPlaylist) return;
+                const totalPages = Math.ceil(currentPlaylist.videos.length / videosPerPage);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderVideos(); // Re-render videos for the new page
+                    // renderPaginationControls() is called by renderVideos
+                }
+            });
         }
 
         // --- Drag and Drop ---
@@ -1767,6 +1890,7 @@
             }
 
             currentPlaylistId = id;
+            currentPage = 1; // Reset to first page when selecting a playlist
             saveLastSelectedPlaylist(id);
 
             // Update UI
@@ -1840,6 +1964,7 @@
                 };
 
                 currentPlaylist.videos.push(video);
+                currentPage = Math.ceil(currentPlaylist.videos.length / videosPerPage); // Go to the last page where the new video is
                 savePlaylists();
                 renderVideos();
                 renderPlaylists(); // Update count in sidebar
@@ -1873,9 +1998,19 @@
             if (videoId === currentlyPlayingVideoId) {
                 stopVideo();
                 playerWrapperEl.classList.add('hidden');
+                handleClosePlayer(); // Also ensure player is hidden if its video is deleted
             }
 
             currentPlaylist.videos.splice(videoIndex, 1);
+
+            // Adjust current page if necessary (e.g., deleting the last item on a page)
+            const totalPages = Math.ceil(currentPlaylist.videos.length / videosPerPage);
+            if (currentPage > totalPages && totalPages > 0) {
+                 currentPage = totalPages;
+            } else if (currentPlaylist.videos.length === 0) {
+                 currentPage = 1; // Reset if playlist becomes empty
+            }
+
             savePlaylists();
             renderVideos();
             renderPlaylists(); // Update count in sidebar
@@ -1972,8 +2107,13 @@
                 noPlaylistsMessageEl.textContent = searchTerm ? 'No playlists match your search.' : 'No playlists created yet.';
             } else {
                 noPlaylistsMessageEl.classList.add('hidden');
-                playlistListEl.innerHTML = filteredPlaylists.map(playlist => `
-                    <li class="playlist-item ${playlist.id === currentPlaylistId ? 'active' : ''}" data-id="${playlist.id}">
+                playlistListEl.innerHTML = ''; // Clear existing content first
+                const fragment = document.createDocumentFragment(); // Create a fragment
+                filteredPlaylists.forEach(playlist => {
+                    const li = document.createElement('li');
+                    li.className = `playlist-item ${playlist.id === currentPlaylistId ? 'active' : ''}`;
+                    li.dataset.id = playlist.id;
+                    li.innerHTML = `
                         <span class="playlist-name">${escapeHTML(playlist.name)}</span>
                         <span class="playlist-count">${playlist.videos.length}</span>
                         <div class="controls">
@@ -1986,8 +2126,10 @@
                                 <span class="visually-hidden">Delete ${escapeHTML(playlist.name)}</span>
                             </button>
                         </div>
-                    </li>
-                `).join('');
+                    `;
+                    fragment.appendChild(li); // Add the item to the fragment
+                });
+                playlistListEl.appendChild(fragment); // Append the fragment to the DOM once
             }
         }
 
@@ -1996,32 +2138,64 @@
 
             if (!currentPlaylist || currentPlaylist.videos.length === 0) {
                 videoGridEl.innerHTML = ''; // Clear grid
+                paginationControlsEl.classList.add('hidden'); // Hide pagination if no videos
                 videoPlaceholderEl.textContent = currentPlaylist ? `Playlist "${escapeHTML(currentPlaylist.name)}" is empty. Add some videos!` : 'Select or create a playlist.';
                 videoPlaceholderEl.classList.remove('hidden');
                 return;
             }
 
+            // --- Pagination Logic ---
+            const totalVideos = currentPlaylist.videos.length;
+            const totalPages = Math.ceil(totalVideos / videosPerPage);
+
+            // Ensure currentPage is valid (e.g., after deletion)
+            if (currentPage > totalPages && totalPages > 0) {
+                currentPage = totalPages;
+            } else if (totalPages === 0) {
+                currentPage = 1; // Should be handled by the empty check above, but safety first
+            }
+
+            const startIndex = (currentPage - 1) * videosPerPage;
+            const endIndex = startIndex + videosPerPage;
+            const videosToRender = currentPlaylist.videos.slice(startIndex, endIndex);
+            // --- End Pagination Logic ---
+
             videoPlaceholderEl.classList.add('hidden'); // Hide placeholder
-            videoGridEl.innerHTML = currentPlaylist.videos.map(video => `
-                <div class="video-card" data-video-id="${video.id}" draggable="true">
-                    <div class="thumbnail-wrapper">
-                       <img src="${escapeHTML(video.thumbnail)}" class="thumbnail" alt="" loading="lazy"> <!-- Alt can be empty as title is below -->
+            videoGridEl.innerHTML = ''; // Clear existing grid content
+            const fragment = document.createDocumentFragment(); // Create a fragment
+
+            videosToRender.forEach(video => { // Iterate over the page's videos only
+                const div = document.createElement('div');
+                div.className = 'video-card';
+                div.dataset.videoId = video.id;
+                div.draggable = true;
+                div.innerHTML = `
+                    <div class="video-card" data-video-id="${video.id}" draggable="true">
+                        <div class="thumbnail-wrapper">
+                           <img src="${escapeHTML(video.thumbnail)}" class="thumbnail" alt="" loading="lazy"> <!-- Alt can be empty as title is below -->
+                        </div>
+                        <div class="video-info">
+                             <h4>${escapeHTML(video.title)}</h4>
+                             <div class="video-controls">
+                                 <span class="drag-handle" title="Drag to reorder">
+                                    ${ICONS.drag}
+                                    <span class="visually-hidden">Drag to reorder ${escapeHTML(video.title)}</span>
+                                 </span>
+                                 <button class="icon-button delete-video-btn" title="Remove from playlist">
+                                    ${ICONS.delete}
+                                    <span class="visually-hidden">Remove ${escapeHTML(video.title)} from playlist</span>
+                                 </button>
+                             </div>
+                        </div>
                     </div>
-                    <div class="video-info">
-                         <h4>${escapeHTML(video.title)}</h4>
-                         <div class="video-controls">
-                             <span class="drag-handle" title="Drag to reorder">
-                                ${ICONS.drag}
-                                <span class="visually-hidden">Drag to reorder ${escapeHTML(video.title)}</span>
-                             </span>
-                             <button class="icon-button delete-video-btn" title="Remove from playlist">
-                                ${ICONS.delete}
-                                <span class="visually-hidden">Remove ${escapeHTML(video.title)} from playlist</span>
-                             </button>
-                         </div>
-                    </div>
-                </div>
-            `).join('');
+                `;
+                fragment.appendChild(div.firstElementChild); // Append the actual card element from the innerHTML
+            });
+
+            videoGridEl.appendChild(fragment); // Append the fragment to the DOM once
+
+            // Render pagination controls after rendering videos
+            renderPaginationControls(totalVideos, totalPages);
         }
 
         // --- UI Updates ---
@@ -2186,6 +2360,30 @@
                 toast.classList.remove('show');
                 toast.addEventListener('transitionend', () => toast.remove(), { once: true });
             });
+        }
+
+        function handleClosePlayer() {
+            stopVideo();
+            playerWrapperEl.classList.add('hidden');
+        }
+
+        function renderPaginationControls(totalVideos, totalPages) {
+            // const currentPlaylist = playlists.find(p => p.id === currentPlaylistId); // Data already available
+            // if (!currentPlaylist || currentPlaylist.videos.length <= videosPerPage) {
+            if (totalVideos <= videosPerPage) { // Simpler check based on passed data
+                // Hide controls if not needed (single page or empty)
+                paginationControlsEl.classList.add('hidden');
+                return;
+            }
+
+            paginationControlsEl.classList.remove('hidden'); // Show controls
+            // const totalVideos = currentPlaylist.videos.length; // Passed as argument
+            // const totalPages = Math.ceil(totalVideos / videosPerPage); // Passed as argument
+
+            pageInfoEl.textContent = `Page ${currentPage} of ${totalPages}`;
+
+            prevPageBtn.disabled = currentPage === 1;
+            nextPageBtn.disabled = currentPage === totalPages;
         }
 
         // --- Start the app ---
