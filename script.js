@@ -834,11 +834,30 @@ function handleReorderVideo(videoIdToMove, targetVideoId) {
 }
 
 function playVideo(videoId) {
-    if (!videoId) { console.error("playVideo: Invalid videoId."); return; }
+    if (!videoId) {
+        console.error("playVideo: Invalid videoId (empty or null).");
+        showToast("Cannot play video: Invalid video ID.", "error");
+        return;
+    }
+    // Additional validation: ensure ID is 11 characters
+    if (typeof videoId !== 'string' || videoId.length !== 11) {
+        console.error(`playVideo: Invalid YouTube video ID '${videoId}' (must be 11 characters).`);
+        showToast("Cannot play video: Invalid YouTube video ID.", "error");
+        return;
+    }
+    console.log(`Attempting to play YouTube video ID: ${videoId}`);
     const currentPlaylist = getCurrentPlaylist();
-    if (!currentPlaylist) { console.error("playVideo: No current playlist."); return; }
+    if (!currentPlaylist) {
+        console.error("playVideo: No current playlist.");
+        showToast("No playlist selected.", "error");
+        return;
+    }
     const videoData = currentPlaylist.videos.find(v => v.id === videoId);
-    if (!videoData) { console.error(`playVideo: Video ${videoId} not found in playlist.`); return; }
+    if (!videoData) {
+        console.error(`playVideo: Video ${videoId} not found in playlist.`);
+        showToast("Video not found in playlist.", "error");
+        return;
+    }
 
     intendedVideoId = videoId; // Set intention *immediately*
     playerWrapperEl.classList.remove('hidden');
