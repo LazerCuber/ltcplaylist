@@ -105,16 +105,32 @@ function init() {
 
 // --- Handle visibility and fullscreen changes ---
 function handleVisibilityChange() {
-    if (document.visibilityState === 'visible') {
-        // Tab is active/visible
-        startAudioContext();
-        requestWakeLock();
-    } else {
-        // Tab is inactive/hidden - keep audio going if playing
+    if (document.visibilityState === 'hidden') {
+        // Page is now hidden (background)
         if (currentlyPlayingVideoId) {
+            // Enhanced background playback
             ensureAudioBackgroundPlayback();
-        } else {
-            releaseWakeLock();
+            
+            // Force the player to continue playing in background
+            if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+                // Set a timeout to ensure playback continues
+                setTimeout(() => {
+                    if (currentlyPlayingVideoId) {
+                        ytPlayer.playVideo();
+                    }
+                }, 500);
+            }
+        }
+    } else {
+        // Page is visible again
+        if (currentlyPlayingVideoId && ytPlayer) {
+            // Always try to resume playback when returning to the app
+            if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+                ytPlayer.playVideo();
+            }
+            
+            // Update the UI to reflect current state
+            updatePlayingVideoHighlight(currentlyPlayingVideoId);
         }
     }
 }
@@ -459,10 +475,29 @@ function onYouTubeIframeAPIReady() {
 }
 
 function onPlayerReady(event) {
-    console.log("Player Ready.");
-    isPlayerReady = true;
-    startAudioContext(); // Start audio context when player is ready
-    setupMediaSessionHandlers(); // Setup MediaSession handlers
+    console.log('Player ready');
+    window.isPlayerReady = true;
+    
+    // Enable media session API
+    setupMediaSessionHandlers();
+    
+    // Optimize for faster video loading
+    if (event.target && typeof event.target.setPlaybackQuality === 'function') {
+        // Set initial quality (can be adjusted based on network conditions)
+        event.target.setPlaybackQuality('medium');
+    }
+    
+    // If autoplay is enabled and there's a selected video, play it
+    if (isAutoplayEnabled && currentlyPlayingVideoId) {
+        event.target.playVideo();
+        
+        // Ensure background playback is set up immediately
+        ensureAudioBackgroundPlayback();
+    }
+    
+    // Update UI
+    updatePlayerControls();
+    
     if (videoIdToPlayOnReady) {
         const videoToPlay = videoIdToPlayOnReady;
         videoIdToPlayOnReady = null;
@@ -1490,13 +1525,41 @@ function ensureAudioBackgroundPlayback() {
     // Make sure audio context is running
     startAudioContext();
     
-    // On mobile, we need special handling for background playback
+    // Enhanced background playback for all mobile devices
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         // Ensure that wake lock is requested
         requestWakeLock();
         
         // Make sure our silent audio source is playing
         ensureSilentSource();
+        
+        // Create an invisible audio element for background playback
+        if (!window.backgroundAudioElement) {
+            const audioElement = document.createElement('audio');
+            audioElement.src = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+            audioElement.loop = true;
+            audioElement.autoplay = true;
+            audioElement.volume = 0.001; // Nearly silent
+            audioElement.setAttribute('playsinline', '');
+            audioElement.setAttribute('webkit-playsinline', '');
+            document.body.appendChild(audioElement);
+            window.backgroundAudioElement = audioElement;
+            
+            // Play the audio element on user interaction
+            document.addEventListener('touchstart', function playAudioOnce() {
+                audioElement.play()
+                    .then(() => {
+                        console.log('Background audio started successfully');
+                    })
+                    .catch(err => {
+                        console.warn('Background audio failed to start:', err);
+                    });
+                document.removeEventListener('touchstart', playAudioOnce);
+            }, { once: true });
+        } else {
+            // Ensure the audio is playing
+            window.backgroundAudioElement.play().catch(e => console.warn('Failed to play background audio:', e));
+        }
         
         // Start a more frequent keep-alive interval when in background
         stopAudioKeepAliveInterval();
@@ -1505,7 +1568,11 @@ function ensureAudioBackgroundPlayback() {
             if (audioContext && audioContext.state === 'suspended') {
                 resumeAudioContext();
             }
-        }, 5000); // More frequent checks in background
+            // Ensure background audio is playing
+            if (window.backgroundAudioElement && window.backgroundAudioElement.paused) {
+                window.backgroundAudioElement.play().catch(e => {});
+            }
+        }, 2000); // More frequent checks (every 2 seconds)
     }
 }
 
@@ -1523,6 +1590,15 @@ init();
         if (window.ytPlayer && typeof ytPlayer.mute === 'function' && typeof ytPlayer.playVideo === 'function') {
             ytPlayer.mute();
             ytPlayer.playVideo();
+            // Set playback rate to 1 to ensure normal speed
+            if (typeof ytPlayer.setPlaybackRate === 'function') {
+                ytPlayer.setPlaybackRate(1);
+            }
+            // Preload video for faster loading
+            if (typeof ytPlayer.setPlaybackQuality === 'function') {
+                // Set a moderate quality for balance between speed and quality
+                ytPlayer.setPlaybackQuality('medium');
+            }
         }
     }
 
@@ -1531,7 +1607,11 @@ init();
         if (window.ytPlayer && typeof ytPlayer.unMute === 'function' && typeof ytPlayer.playVideo === 'function') {
             ytPlayer.unMute();
             ytPlayer.playVideo();
+            // Ensure background playback is enabled
+            ensureAudioBackgroundPlayback();
         }
+        
+        // Remove all event listeners
         ['click', 'touchstart', 'keydown'].forEach(evt => {
             document.removeEventListener(evt, onFirstUserGesture, true);
         });
@@ -1546,12 +1626,20 @@ init();
     if (window.YT && window.ytPlayer && window.isPlayerReady) {
         tryAutoplayMuted();
     } else {
-        // Wait for player to be ready
+        // Wait for player to be ready with a shorter interval
         let checkReady = setInterval(() => {
             if (window.ytPlayer && window.isPlayerReady) {
                 tryAutoplayMuted();
                 clearInterval(checkReady);
             }
-        }, 300);
+        }, 100); // Reduced from 300ms to 100ms for faster response
     }
+    
+    // Register visibility change handler to maintain playback when screen is off
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && window.ytPlayer && currentlyPlayingVideoId) {
+            // When app goes to background, ensure background playback
+            ensureAudioBackgroundPlayback();
+        }
+    });
 })();
