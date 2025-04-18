@@ -1511,3 +1511,47 @@ function ensureAudioBackgroundPlayback() {
 
 // --- Start the app ---
 init();
+
+// --- Mobile Instant Playback Workaround ---
+(function setupMobileInstantPlayback() {
+    // Only run on mobile browsers
+    const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(navigator.userAgent);
+    if (!isMobile) return;
+    
+    // Try to autoplay YouTube player muted on load
+    function tryAutoplayMuted() {
+        if (window.ytPlayer && typeof ytPlayer.mute === 'function' && typeof ytPlayer.playVideo === 'function') {
+            ytPlayer.mute();
+            ytPlayer.playVideo();
+        }
+    }
+
+    // On first user interaction: unmute and play again
+    function onFirstUserGesture() {
+        if (window.ytPlayer && typeof ytPlayer.unMute === 'function' && typeof ytPlayer.playVideo === 'function') {
+            ytPlayer.unMute();
+            ytPlayer.playVideo();
+        }
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            document.removeEventListener(evt, onFirstUserGesture, true);
+        });
+    }
+
+    // Attach listeners for first user gesture
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, onFirstUserGesture, { once: true, capture: true });
+    });
+
+    // Try autoplay muted after player is ready
+    if (window.YT && window.ytPlayer && window.isPlayerReady) {
+        tryAutoplayMuted();
+    } else {
+        // Wait for player to be ready
+        let checkReady = setInterval(() => {
+            if (window.ytPlayer && window.isPlayerReady) {
+                tryAutoplayMuted();
+                clearInterval(checkReady);
+            }
+        }, 300);
+    }
+})();
