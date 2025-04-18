@@ -56,6 +56,8 @@ let currentPage = 1;
 // Web Audio Keep-Alive
 let audioContext = null;
 let silentSource = null;
+let mediaWakeLock = null;
+let audioKeepAliveInterval = null;
 
 // --- Icons ---
 // (Keep ICONS object as is)
@@ -94,12 +96,35 @@ function init() {
     }
     renderPlaylists(); // Initial playlist render
 
-    // Keep Visibility listener for potential future use or robust audio context handling
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            startSilentAudio(); // Try to keep context alive when returning to tab
+    // Handle visibility changes for audio context and wake lock management
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Handle fullscreen changes
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+}
+
+// --- Handle visibility and fullscreen changes ---
+function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+        // Tab is active/visible
+        startAudioContext();
+        requestWakeLock();
+    } else {
+        // Tab is inactive/hidden - keep audio going if playing
+        if (currentlyPlayingVideoId) {
+            ensureAudioBackgroundPlayback();
+        } else {
+            releaseWakeLock();
         }
-    });
+    }
+}
+
+function handleFullscreenChange() {
+    // If entering fullscreen, ensure wake lock
+    if (document.fullscreenElement) {
+        requestWakeLock();
+        startAudioContext();
+    }
 }
 
 // --- Local Storage & State Helpers ---
@@ -416,7 +441,12 @@ function onYouTubeIframeAPIReady() {
     if (document.getElementById('player')) {
         ytPlayer = new YT.Player('player', {
             height: '100%', width: '100%',
-            playerVars: { 'playsinline': 1, 'rel': 0 },
+            playerVars: { 
+                'playsinline': 1, 
+                'rel': 0,
+                'controls': 1,
+                'modestbranding': 1
+            },
             events: {
                 'onReady': onPlayerReady,
                 'onStateChange': onPlayerStateChange,
@@ -431,8 +461,8 @@ function onYouTubeIframeAPIReady() {
 function onPlayerReady(event) {
     console.log("Player Ready.");
     isPlayerReady = true;
-    startSilentAudio(); // Start silent audio when player is ready
-    setupMediaSessionActionHandlers(); // Setup MediaSession handlers
+    startAudioContext(); // Start audio context when player is ready
+    setupMediaSessionHandlers(); // Setup MediaSession handlers
     if (videoIdToPlayOnReady) {
         const videoToPlay = videoIdToPlayOnReady;
         videoIdToPlayOnReady = null;
@@ -450,44 +480,49 @@ function onPlayerStateChange(event) {
             case YT.PlayerState.PLAYING:
             case YT.PlayerState.BUFFERING: // Treat buffering as playing for media session
                 navigator.mediaSession.playbackState = "playing";
+                requestWakeLock(); // Ensure screen stays on while playing
+                updateMediaSessionMetadataWithPosition(); // Update with current position
                 break;
             case YT.PlayerState.PAUSED:
                 navigator.mediaSession.playbackState = "paused";
+                updateMediaSessionMetadataWithPosition(); // Update with paused position
                 break;
             case YT.PlayerState.ENDED:
-            case YT.PlayerState.CUED: // Cued is ambiguous, maybe paused? Or none if nothing was intended?
+            case YT.PlayerState.CUED:
             case YT.PlayerState.UNSTARTED:
             default:
                  navigator.mediaSession.playbackState = "none";
-                 break; // Let specific logic below handle state more granularly if needed
+                 break;
         }
     }
-
 
     switch (state) {
         case YT.PlayerState.PLAYING:
             currentlyPlayingVideoId = intendedVideoId; // Confirm the intended video is now playing
             updatePlayingVideoHighlight(currentlyPlayingVideoId);
-            startSilentAudio(); // Keep context active
+            startAudioContext(); // Keep context active
+            requestWakeLock(); // Request wake lock when playing
+            startMediaSessionPositionTracking(); // Start tracking position for lock screen
             break;
         case YT.PlayerState.PAUSED:
             // Keep silent audio running for background resume
-            startSilentAudio();
+            startAudioContext();
+            stopMediaSessionPositionTracking(); // Stop tracking when paused
             break;
         case YT.PlayerState.ENDED:
             const endedVideoId = currentlyPlayingVideoId || intendedVideoId;
             currentlyPlayingVideoId = null;
             intendedVideoId = null; // Clear intention as video finished naturally
             updatePlayingVideoHighlight(null);
+            releaseWakeLock(); // Release wake lock when ended
+            stopMediaSessionPositionTracking(); // Stop tracking when ended
             if (isAutoplayEnabled) {
-                startSilentAudio(); // Ensure context active before next play attempt
+                startAudioContext(); // Ensure context active before next play attempt
                 playNextVideo(endedVideoId);
             } else {
-                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
             }
             break;
-        // Other states (BUFFERING, CUED, UNSTARTED) don't require immediate action here,
-        // but their MediaSession state is set above.
     }
 }
 
@@ -505,10 +540,12 @@ function onPlayerError(event) {
     showToast(`Player Error: ${errorMsg}`, 'error', 5000);
 
     // Reset state for the failed video
-    if (erroredVideoId === currentlyPlayingVideoId) currentlyPlayingVideoId = null; // If it was somehow marked as playing
-    if (erroredVideoId === intendedVideoId) intendedVideoId = null; // Clear the failed intention
+    if (erroredVideoId === currentlyPlayingVideoId) currentlyPlayingVideoId = null;
+    if (erroredVideoId === intendedVideoId) intendedVideoId = null;
     updatePlayingVideoHighlight(null);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+    releaseWakeLock(); // Release wake lock on error
+    stopMediaSessionPositionTracking(); // Stop tracking on error
 
     // Autoplay skip logic
     if (isAutoplayEnabled && erroredVideoId) {
@@ -772,23 +809,25 @@ function playVideo(videoId) {
     playerWrapperEl.classList.remove('hidden');
     updatePlayingVideoHighlight(videoId); // Highlight immediately
 
-    // Update Media Session metadata
+    // Request wake lock and start audio context
+    requestWakeLock();
+    startAudioContext();
+
+    // Update Media Session metadata with video info
     if ('mediaSession' in navigator) {
         updateMediaSessionMetadata(videoData);
         navigator.mediaSession.playbackState = "playing"; // Optimistic state
     }
 
-    // Ensure silent audio context is active before playback attempt
-    startSilentAudio();
-
     if (ytPlayer && isPlayerReady) {
         try {
             ytPlayer.loadVideoById(videoId);
-            // ytPlayer.playVideo(); // Optional: Force play? Usually loadVideoById autoplays if allowed.
+            // Start position tracking for media session
+            startMediaSessionPositionTracking();
         } catch (error) {
             console.error("playVideo: Error calling loadVideoById:", error);
             showToast("Failed to load video.", "error");
-            handlePlayerErrorCleanup(videoId); // Use a common cleanup function
+            handlePlayerErrorCleanup(videoId);
         }
     } else {
         videoIdToPlayOnReady = videoId; // Queue for when player is ready
@@ -883,7 +922,8 @@ function handlePlayerErrorCleanup(videoId) {
     if (videoId === videoIdToPlayOnReady) videoIdToPlayOnReady = null;
     updatePlayingVideoHighlight(null);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
-    // Don't necessarily hide player here, onError/handleClosePlayer decides that
+    releaseWakeLock(); // Release wake lock on error
+    stopMediaSessionPositionTracking(); // Stop tracking on error
 }
 
 function extractVideoId(url) {
@@ -1135,9 +1175,22 @@ function debounce(func, wait) {
 function handleClosePlayer() {
     stopVideo();
     playerWrapperEl.classList.add('hidden');
+    releaseWakeLock();
+    stopAudioKeepAliveInterval();
+    stopMediaSessionPositionTracking();
+    
     if ('mediaSession' in navigator) {
         updateMediaSessionMetadata(null); // Clear metadata
         navigator.mediaSession.playbackState = 'none';
+        
+        // Clear position state if supported
+        if ('setPositionState' in navigator.mediaSession) {
+            try {
+                navigator.mediaSession.setPositionState(); // Clear position state
+            } catch (e) {
+                // Some browsers may throw when clearing position state
+            }
+        }
     }
 }
 
@@ -1147,128 +1200,238 @@ function updateMediaSessionMetadata(video) {
 
     if (!video) {
         navigator.mediaSession.metadata = null;
-        // State is handled elsewhere (stopVideo, onStateChange)
         return;
     }
 
     const currentPlaylist = getCurrentPlaylist();
     const playlistName = currentPlaylist ? currentPlaylist.name : 'Playlist';
 
+    // Generate high-quality artwork URLs
+    const artworkUrls = [
+        // Try to get highest quality thumbnails
+        { src: `https://i.ytimg.com/vi/${video.id}/maxresdefault.jpg`, sizes: '1280x720', type: 'image/jpeg' },
+        { src: `https://i.ytimg.com/vi/${video.id}/sddefault.jpg`, sizes: '640x480', type: 'image/jpeg' },
+        { src: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
+        { src: video.thumbnail, sizes: '320x180', type: 'image/jpeg' }
+    ];
+
     navigator.mediaSession.metadata = new MediaMetadata({
         title: video.title,
-        artist: 'YouTube', // Simplified
+        artist: 'YouTube', // Could be channel name if we had that info
         album: playlistName,
-        artwork: [
-            // Prioritize higher quality thumbnails if potentially available
-            { src: video.thumbnail.replace('mqdefault', 'hqdefault'), sizes: '480x360', type: 'image/jpeg' },
-            { src: video.thumbnail, sizes: '320x180', type: 'image/jpeg' }, // mqdefault
-        ]
+        artwork: artworkUrls
     });
 }
 
-function setupMediaSessionActionHandlers() {
-    if (!('mediaSession' in navigator)) return;
+// Update metadata with position information for lock screen
+function updateMediaSessionMetadataWithPosition() {
+    if (!('mediaSession' in navigator) || !ytPlayer || !isPlayerReady) return;
+    
+    try {
+        const duration = ytPlayer.getDuration();
+        const currentTime = ytPlayer.getCurrentTime();
+        
+        if (isNaN(duration) || isNaN(currentTime)) return;
+        
+        // Only update position state if we have valid numbers
+        if ('setPositionState' in navigator.mediaSession) {
+            navigator.mediaSession.setPositionState({
+                duration: duration,
+                position: currentTime,
+                playbackRate: ytPlayer.getPlaybackRate()
+            });
+        }
+    } catch (error) {
+        console.warn('Error updating media session position:', error);
+    }
+}
 
-    const actions = {
-        play: () => {
-            startSilentAudio(); // Ensure context active
+// Track position regularly for lock screen updates
+let positionUpdateInterval = null;
+
+function startMediaSessionPositionTracking() {
+    stopMediaSessionPositionTracking(); // Clear any existing interval
+    
+    if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        updateMediaSessionMetadataWithPosition(); // Initial update
+        positionUpdateInterval = setInterval(updateMediaSessionMetadataWithPosition, 1000);
+    }
+}
+
+function stopMediaSessionPositionTracking() {
+    if (positionUpdateInterval) {
+        clearInterval(positionUpdateInterval);
+        positionUpdateInterval = null;
+    }
+}
+
+function setupMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) {
+        console.warn('Media Session API not supported in this browser.');
+        return;
+    }
+
+    const actions = [
+        ['play', () => {
+            startAudioContext();
             if (ytPlayer && isPlayerReady && typeof ytPlayer.playVideo === 'function') {
                 ytPlayer.playVideo();
             } else if (intendedVideoId || currentlyPlayingVideoId) {
-                // If player not ready, try re-triggering playVideo for the last intended/playing ID
                 playVideo(intendedVideoId || currentlyPlayingVideoId);
             }
-             navigator.mediaSession.playbackState = "playing"; // Update state
-        },
-        pause: () => {
+            navigator.mediaSession.playbackState = "playing";
+            requestWakeLock();
+        }],
+        ['pause', () => {
             if (ytPlayer && isPlayerReady && typeof ytPlayer.pauseVideo === 'function') {
                 ytPlayer.pauseVideo();
             }
-            startSilentAudio(); // Keep context active even when paused
-             navigator.mediaSession.playbackState = "paused"; // Update state
-        },
-        stop: () => handleClosePlayer(), // Use existing close handler
-        previoustrack: () => {
-            startSilentAudio();
+            navigator.mediaSession.playbackState = "paused";
+        }],
+        ['stop', () => handleClosePlayer()],
+        ['previoustrack', () => {
+            startAudioContext();
             playPreviousVideo(currentlyPlayingVideoId || intendedVideoId);
-        },
-        nexttrack: () => {
-            startSilentAudio();
+        }],
+        ['nexttrack', () => {
+            startAudioContext();
             playNextVideo(currentlyPlayingVideoId || intendedVideoId);
-        }
-    };
+        }],
+        ['seekto', (details) => {
+            if (ytPlayer && isPlayerReady && typeof ytPlayer.seekTo === 'function') {
+                ytPlayer.seekTo(details.seekTime, true);
+                updateMediaSessionMetadataWithPosition();
+            }
+        }],
+        ['seekbackward', (details) => {
+            if (ytPlayer && isPlayerReady && typeof ytPlayer.getCurrentTime === 'function') {
+                const currentTime = ytPlayer.getCurrentTime();
+                const skipTime = details.seekOffset || 10;
+                ytPlayer.seekTo(Math.max(0, currentTime - skipTime), true);
+                updateMediaSessionMetadataWithPosition();
+            }
+        }],
+        ['seekforward', (details) => {
+            if (ytPlayer && isPlayerReady && typeof ytPlayer.getCurrentTime === 'function' && typeof ytPlayer.getDuration === 'function') {
+                const currentTime = ytPlayer.getCurrentTime();
+                const duration = ytPlayer.getDuration();
+                const skipTime = details.seekOffset || 10;
+                ytPlayer.seekTo(Math.min(duration, currentTime + skipTime), true);
+                updateMediaSessionMetadataWithPosition();
+            }
+        }]
+    ];
 
-    // Set handlers using the actions object
-    Object.keys(actions).forEach(action => {
+    for (const [action, handler] of actions) {
         try {
-            navigator.mediaSession.setActionHandler(action, actions[action]);
+            navigator.mediaSession.setActionHandler(action, handler);
         } catch (error) {
             console.warn(`Could not set MediaSession action handler for ${action}:`, error);
         }
-    });
+    }
 }
 
-// --- Silent Audio Hack ---
-// (Keep startSilentAudio and manageSilentSource, but reduce logging)
-function startSilentAudio() {
-    if (!(window.AudioContext || window.webkitAudioContext)) return;
-
-    const resumeAudio = () => {
-        if (audioContext && audioContext.state === 'suspended') {
-            // console.log("Attempting to resume AudioContext..."); // Keep commented unless debugging
-            audioContext.resume().then(() => {
-                // console.log("AudioContext resumed."); // Keep commented unless debugging
-                manageSilentSource();
-            }).catch(e => console.error("Error resuming AudioContext:", e));
+// --- Wake Lock API ---
+async function requestWakeLock() {
+    if (!currentlyPlayingVideoId) return; // Don't request if not playing
+    
+    if ('wakeLock' in navigator && !mediaWakeLock) {
+        try {
+            mediaWakeLock = await navigator.wakeLock.request('screen');
+            console.log('Wake Lock acquired');
+            
+            mediaWakeLock.addEventListener('release', () => {
+                console.log('Wake Lock released');
+                mediaWakeLock = null;
+            });
+        } catch (err) {
+            console.warn(`Wake Lock error: ${err.name}, ${err.message}`);
         }
-        // Clean up listeners after first interaction attempt
-        ['click', 'touchstart', 'keydown'].forEach(evt =>
-            document.removeEventListener(evt, resumeAudio, { capture: true })
-        );
-    };
+    }
+}
+
+function releaseWakeLock() {
+    if (mediaWakeLock) {
+        mediaWakeLock.release()
+            .then(() => {
+                mediaWakeLock = null;
+            })
+            .catch((err) => {
+                console.warn(`Error releasing Wake Lock: ${err}`);
+            });
+    }
+}
+
+// --- Audio Context Management ---
+function startAudioContext() {
+    if (!(window.AudioContext || window.webkitAudioContext)) return;
 
     if (!audioContext || audioContext.state === 'closed') {
         try {
-            // console.log("Creating new AudioContext."); // Keep commented unless debugging
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             silentSource = null;
-            audioContext.onstatechange = () => {
-                 // console.log("AudioContext state:", audioContext.state); // Keep commented unless debugging
-                if (audioContext.state === 'suspended') {
-                    ['click', 'touchstart', 'keydown'].forEach(evt => {
-                         document.removeEventListener(evt, resumeAudio, { capture: true }); // Remove first
-                         document.addEventListener(evt, resumeAudio, { once: true, capture: true });
-                    });
-                } else if (audioContext.state === 'running') {
-                     manageSilentSource(); // Ensure source is running after resume/initial start
-                }
-            };
+            audioContext.onstatechange = handleAudioContextStateChange;
         } catch (e) {
             console.error("Web Audio API init failed:", e);
-            audioContext = null; return;
+            audioContext = null;
+            return;
         }
     }
 
     if (audioContext.state === 'suspended') {
-        audioContext.resume().catch(() => { // Try immediate resume
-            // console.log("Immediate resume failed, adding interaction listeners."); // Keep commented unless debugging
-            ['click', 'touchstart', 'keydown'].forEach(evt => {
-                document.removeEventListener(evt, resumeAudio, { capture: true }); // Remove first
-                document.addEventListener(evt, resumeAudio, { once: true, capture: true });
-            });
-        });
-        return; // Don't manage source until resumed
+        resumeAudioContext();
+    } else if (audioContext.state === 'running') {
+        ensureSilentSource();
     }
+    
+    // Set up an interval to keep the audio context alive
+    startAudioKeepAliveInterval();
+}
 
-    if (audioContext.state === 'running') {
-        manageSilentSource();
+function handleAudioContextStateChange() {
+    if (!audioContext) return;
+    
+    if (audioContext.state === 'suspended') {
+        resumeAudioContext();
+    } else if (audioContext.state === 'running') {
+        ensureSilentSource();
     }
 }
 
-function manageSilentSource() {
+function resumeAudioContext() {
+    if (!audioContext) return;
+    
+    // First try an immediate resume
+    audioContext.resume().then(() => {
+        ensureSilentSource();
+    }).catch(() => {
+        // If immediate resume fails, set up event listeners for user interaction
+        const resumeOnInteraction = () => {
+            audioContext.resume().then(() => {
+                ensureSilentSource();
+                // Remove listeners after successful resume
+                removeResumeListeners();
+            }).catch(e => console.error("Error resuming AudioContext:", e));
+        };
+
+        const removeResumeListeners = () => {
+            ['click', 'touchstart', 'keydown'].forEach(evt => {
+                document.removeEventListener(evt, resumeOnInteraction, { capture: true });
+            });
+        };
+
+        // Add listeners for user interaction
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            document.removeEventListener(evt, resumeOnInteraction, { capture: true }); // Remove first to avoid duplicates
+            document.addEventListener(evt, resumeOnInteraction, { once: true, capture: true });
+        });
+    });
+}
+
+function ensureSilentSource() {
     if (!audioContext || audioContext.state !== 'running') return;
 
-    // Stop existing source if it exists and is playing/scheduled
+    // Stop existing source if it exists
     if (silentSource) {
         try {
             silentSource.stop();
@@ -1280,15 +1443,15 @@ function manageSilentSource() {
     // Create and start a new silent buffer source
     try {
         silentSource = audioContext.createBufferSource();
-        const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 1, audioContext.sampleRate); // 1 sec silent buffer
+        const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 2, audioContext.sampleRate); // 2 sec silent buffer
         silentSource.buffer = buffer;
         silentSource.loop = true;
-        silentSource.connect(audioContext.destination);
-        // Use GainNode to ensure silence (optional but safer)
-        // const gainNode = audioContext.createGain();
-        // gainNode.gain.value = 0;
-        // silentSource.connect(gainNode);
-        // gainNode.connect(audioContext.destination);
+        
+        // Use GainNode to ensure silence
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 0.001; // Very quiet but not completely silent
+        silentSource.connect(gainNode);
+        gainNode.connect(audioContext.destination);
         silentSource.start(0);
     } catch (e) {
         console.error("Could not create/start silent audio source:", e);
@@ -1296,6 +1459,55 @@ function manageSilentSource() {
     }
 }
 
+// Ensure audio context stays alive when the app is in the background
+function startAudioKeepAliveInterval() {
+    stopAudioKeepAliveInterval(); // Clear any existing interval
+    
+    audioKeepAliveInterval = setInterval(() => {
+        if (currentlyPlayingVideoId && audioContext) {
+            ensureSilentSource();
+            
+            // If we're playing a video but audio context is suspended, try to resume
+            if (audioContext.state === 'suspended') {
+                resumeAudioContext();
+            }
+        } else {
+            // If not playing, we can stop the interval
+            stopAudioKeepAliveInterval();
+        }
+    }, 10000); // Check every 10 seconds
+}
+
+function stopAudioKeepAliveInterval() {
+    if (audioKeepAliveInterval) {
+        clearInterval(audioKeepAliveInterval);
+        audioKeepAliveInterval = null;
+    }
+}
+
+// Special function to ensure audio keeps working in background
+function ensureAudioBackgroundPlayback() {
+    // Make sure audio context is running
+    startAudioContext();
+    
+    // On mobile, we need special handling for background playback
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Ensure that wake lock is requested
+        requestWakeLock();
+        
+        // Make sure our silent audio source is playing
+        ensureSilentSource();
+        
+        // Start a more frequent keep-alive interval when in background
+        stopAudioKeepAliveInterval();
+        audioKeepAliveInterval = setInterval(() => {
+            ensureSilentSource();
+            if (audioContext && audioContext.state === 'suspended') {
+                resumeAudioContext();
+            }
+        }, 5000); // More frequent checks in background
+    }
+}
 
 // --- Start the app ---
 init();
