@@ -84,6 +84,7 @@ function init() {
 
     setupEventListeners();
     updateThemeIcon(); // Set initial theme icon
+    setupMediaSession();
 }
 
 // --- Sidebar Resizing Functions ---
@@ -305,11 +306,6 @@ function updateThemeIcon() {
     themeToggleBtn.title = currentTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme';
 }
 
-// --- Font Management --- // Removed entire section
-// function loadFont() { ... }
-// function applyFont(fontName) { ... }
-// function setFont(fontName) { ... }
-
 // --- YouTube Player API ---
 // This function MUST be global for the API to find it
 function onYouTubeIframeAPIReady() {
@@ -384,6 +380,7 @@ function onPlayerError(event) {
             errorMsg = `Player error code: ${event.data}`;
     }
     showToast(`Player Error: ${errorMsg}`, 'error');
+    if (event.data === 101 || event.data === 150) { playNextVideo(); }
     // Optional: try to play next video or stop?
     // stopVideo();
     // playerWrapperEl.classList.add('hidden');
@@ -684,6 +681,8 @@ function playVideo(videoId) {
         console.log("Player exists and is ready. Loading video:", videoId);
         try {
             ytPlayer.loadVideoById(videoId);
+            const mediaVideo = playlists.find(p => p.id === currentPlaylistId).videos.find(v => v.id === videoId);
+            updateMediaSessionMetadata(mediaVideo);
             // Scroll player into view smoothly, slight delay can help
             setTimeout(() => {
                 if (playerWrapperEl.offsetParent !== null) { // Check if element is visible before scrolling
@@ -906,7 +905,7 @@ function handleImportPlaylists(event) {
                         existingIds.add(importedPlaylist.id);
                         addedCount++;
                     } else {
-                        skippedCount++;
+                        skippedCount++; // Skip duplicates
                         // Optionally implement merging logic here (e.g., update existing)
                     }
                 } else {
@@ -1030,6 +1029,35 @@ function updatePlayingHighlight(playingVideoId) {
             playingCard.classList.add('playing');
         }
     }
+}
+
+// --- Media Session API for Background Playback & Lock-Screen Controls ---
+function setupMediaSession() {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', () => { ytPlayer.playVideo(); });
+        navigator.mediaSession.setActionHandler('pause', () => { ytPlayer.pauseVideo(); });
+        navigator.mediaSession.setActionHandler('previoustrack', () => { playPreviousVideo(); });
+        navigator.mediaSession.setActionHandler('nexttrack', () => { playNextVideo(); });
+    }
+}
+
+function updateMediaSessionMetadata(video) {
+    if ('mediaSession' in navigator && video) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: video.title,
+            artist: playlists.find(p => p.id === currentPlaylistId)?.name || '',
+            artwork: [{ src: video.thumbnail, sizes: '300x300', type: 'image/png' }]
+        });
+    }
+}
+
+function playPreviousVideo() {
+    const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+    if (!currentPlaylist || !currentlyPlayingVideoId) return;
+    const idx = currentPlaylist.videos.findIndex(v => v.id === currentlyPlayingVideoId);
+    const prevIdx = (idx - 1 + currentPlaylist.videos.length) % currentPlaylist.videos.length;
+    const prevVideo = currentPlaylist.videos[prevIdx];
+    if (prevVideo) playVideo(prevVideo.id);
 }
 
 // --- Start the app ---
