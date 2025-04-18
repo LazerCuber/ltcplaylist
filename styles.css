@@ -39,9 +39,9 @@
 
 
             /* --- Light Theme --- */
-            --primary-color: #D32F2F;
-            --primary-color-dark: #B71C1C;
-            --primary-color-light: #FFEBEE;
+            --primary-color: #11849d;
+            --primary-color-dark: #0d697c;
+            --primary-color-light: #cce8ee;
             /* Keep this light for contrast */
             --background-color: #ffffff;
             /* Pure white */
@@ -60,7 +60,7 @@
             --border-color-light: #ebebeb;
             --hover-bg-color: #f0f0f0;
             /* Subtle hover */
-            --focus-ring-color: rgba(211, 47, 47, 0.2);
+            --focus-ring-color: rgba(17, 132, 157, 0.2);
             /* Slightly softer focus */
             --icon-color: #444444;
             --icon-color-hover: var(--text-color);
@@ -69,15 +69,15 @@
             --resizer-color: var(--border-color);
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
-            --primary-color-rgb: 211, 47, 47;
+            --primary-color-rgb: 17, 132, 157;
         }
 
         html[data-theme="dark"] {
-            --primary-color: #E57373;
+            --primary-color: #3aa9c3;
             /* Keep red vibrant */
-            --primary-color-dark: #EF9A9A;
+            --primary-color-dark: #5bbad1;
             /* Lighter red for hover/active */
-            --primary-color-light: rgba(229, 115, 115, 0.1);
+            --primary-color-light: rgba(58, 169, 195, 0.1);
             /* Subtle highlight */
             --background-color: #121212;
             /* Much darker background */
@@ -97,7 +97,7 @@
             /* Subtle inner border */
             --hover-bg-color: #2c2c2c;
             /* Darker hover */
-            --focus-ring-color: rgba(229, 115, 115, 0.3);
+            --focus-ring-color: rgba(58, 169, 195, 0.3);
             /* Keep focus visible */
             --icon-color: #a0a0a0;
             --icon-color-hover: var(--text-color);
@@ -107,7 +107,7 @@
             --resizer-color: var(--border-color);
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
-            --primary-color-rgb: 229, 115, 115;
+            --primary-color-rgb: 58, 169, 195;
         }
 
 
@@ -1189,11 +1189,6 @@
                 opacity: 1;
             }
 
-            .video-controls .drag-handle {
-
-                /* Hide drag handle on mobile */
-            }
-
             .video-info {
                 padding: 8px 10px;
                 /* Adjust padding */
@@ -1249,6 +1244,13 @@
                 transition: background-color 0.05s ease-out, transform 0.05s ease-out;
             }
             /* --- End Mobile Tap Feedback --- */
+
+            .video-controls .drag-handle {
+                /* Increase touch area without making icon huge */
+                padding: 12px 10px; /* Generous padding */
+                margin: -8px -6px; /* Negative margin to pull it back visually */
+                /* Adjust margin values as needed to align visually */
+            }
 
         }
 

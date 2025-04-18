@@ -176,7 +176,7 @@ function setupEventListeners() {
 
         if (event.target.closest('.delete-video-btn')) {
             event.stopPropagation(); handleDeleteVideo(videoId);
-        } else if (!event.target.closest('.drag-handle')) { // Don't play if clicking the handle
+        } else if (!event.target.closest('.drag-handle')) {
             playVideo(videoId);
         }
     });
@@ -350,10 +350,14 @@ function onPlayerStateChange(event) {
     // console.log("Player state changed:", event.data); // Log state changes for debugging
     if (event.data === YT.PlayerState.PLAYING) {
         currentlyPlayingVideoId = getCurrentPlayingVideoIdFromApi();
+        updatePlayingHighlight(currentlyPlayingVideoId);
         // Highlight the currently playing video card? (Optional enhancement)
-    }
-    if (event.data === YT.PlayerState.ENDED && isAutoplayEnabled) {
+    } else if (event.data === YT.PlayerState.ENDED && isAutoplayEnabled) {
+        // When ended and autoplaying, the highlight will be updated when the next video starts playing.
         playNextVideo();
+    } else if (event.data === YT.PlayerState.ENDED || event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.CUED) {
+        // Optional: Remove highlight on pause/end/cue if not autoplaying next
+        // updatePlayingHighlight(null); // Uncomment if you want highlight removed on pause/stop
     }
     // Add more state handling if needed (BUFFERING, CUED, etc.)
 }
@@ -493,7 +497,7 @@ function selectPlaylist(id) {
     addVideoBtn.disabled = videoUrlInput.value.trim() === ''; // Set initial state based on input
     videoPlaceholderEl.classList.add('hidden');
     playerWrapperEl.classList.add('hidden');
-    stopVideo();
+    stopVideo(); // stopVideo now also clears highlight
 
     renderPlaylists(); // Update active state
     renderVideos(); // Render videos for the selected playlist
@@ -673,6 +677,7 @@ function playVideo(videoId) {
     // Ensure the player container is visible first
     playerWrapperEl.classList.remove('hidden');
     currentlyPlayingVideoId = videoId; // Set this immediately for state tracking
+    updatePlayingHighlight(videoId); // Add highlight immediately
 
     // Check if player is initialized AND ready
     if (ytPlayer && isPlayerReady) {
@@ -711,6 +716,7 @@ function stopVideo() {
         ytPlayer.stopVideo();
     }
     currentlyPlayingVideoId = null;
+    updatePlayingHighlight(null); // Add this line to clear highlight
 }
 
 function extractVideoId(url) {
@@ -987,7 +993,7 @@ function showToast(message, type = 'info', duration = 3000) {
 }
 
 function handleClosePlayer() {
-    stopVideo();
+    stopVideo(); // stopVideo now also clears highlight
     playerWrapperEl.classList.add('hidden');
 }
 
@@ -1008,6 +1014,22 @@ function renderPaginationControls(totalVideos, totalPages) {
 
     prevPageBtn.disabled = currentPage === 1;
     nextPageBtn.disabled = currentPage === totalPages;
+}
+
+// --- Highlight Management ---
+function updatePlayingHighlight(playingVideoId) {
+    // Remove highlight from all cards first
+    videoGridEl.querySelectorAll('.video-card.playing').forEach(card => {
+        card.classList.remove('playing');
+    });
+
+    // Add highlight to the currently playing card if an ID is provided
+    if (playingVideoId) {
+        const playingCard = videoGridEl.querySelector(`.video-card[data-video-id="${playingVideoId}"]`);
+        if (playingCard) {
+            playingCard.classList.add('playing');
+        }
+    }
 }
 
 // --- Start the app ---
