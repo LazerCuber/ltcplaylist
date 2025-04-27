@@ -41,7 +41,7 @@
             /* --- Light Theme --- */
             --primary-color: #11849d;
             --primary-color-dark: #0d697c;
-            --primary-color-light: #cce8ee;
+            --primary-color-light: #d1f0f7;
             /* Keep this light for contrast */
             --background-color: #ffffff;
             /* Pure white */
@@ -56,11 +56,12 @@
             --text-color-subtle: #888888;
             /* Lighter subtle grey */
             --border-color: #e0e0e0;
+            --border-color-second: #e0e0e0;
             /* Lighter border */
             --border-color-light: #ebebeb;
             --hover-bg-color: #f0f0f0;
             /* Subtle hover */
-            --focus-ring-color: rgba(17, 132, 157, 0.2);
+            --focus-ring-color: rgba(211, 47, 47, 0.2);
             /* Slightly softer focus */
             --icon-color: #444444;
             --icon-color-hover: var(--text-color);
@@ -73,15 +74,15 @@
         }
 
         html[data-theme="dark"] {
-            --primary-color: #3aa9c3;
+            --primary-color: #11849d;
             /* Keep red vibrant */
-            --primary-color-dark: #5bbad1;
+            --primary-color-dark: #0d697c;
             /* Lighter red for hover/active */
-            --primary-color-light: rgba(58, 169, 195, 0.1);
+            --primary-color-light: rgba(17, 132, 157, 0.1);
             /* Subtle highlight */
-            --background-color: #121212;
+            --background-color: #131316;
             /* Much darker background */
-            --surface-color: #1d1d1d;
+            --surface-color: #18181b;
             /* Darker surface */
             --surface-color-alt: #2a2a2a;
             /* Slightly lighter dark */
@@ -91,13 +92,17 @@
             /* Lighter muted */
             --text-color-subtle: #707070;
             /* Darker subtle */
-            --border-color: #333333;
-            /* Darker border */
+            --border-color: transparent;
+            /* Changed to transparent */
             --border-color-light: #282828;
+            /* Second Color */
+            --border-color-second: #333333;
+            /* Button Color */
+            --button-color: #26272b;
             /* Subtle inner border */
             --hover-bg-color: #2c2c2c;
             /* Darker hover */
-            --focus-ring-color: rgba(58, 169, 195, 0.3);
+            --focus-ring-color: rgba(229, 115, 115, 0.3);
             /* Keep focus visible */
             --icon-color: #a0a0a0;
             --icon-color-hover: var(--text-color);
@@ -107,7 +112,7 @@
             --resizer-color: var(--border-color);
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
-            --primary-color-rgb: 58, 169, 195;
+            --primary-color-rgb: 17, 132, 157;
         }
 
 
@@ -283,7 +288,7 @@
             border: 1px solid var(--border-color);
             border-radius: var(--border-radius-md);
             font-size: 0.9rem;
-            background-color: var(--background-color);
+            background-color: var(--button-color);
             color: var(--text-color);
             transition: var(--transition-default);
             transition-property: border-color, box-shadow, background-color, color;
@@ -316,7 +321,7 @@
 
         /* Button Styles */
         button {
-            background-color: var(--primary-color);
+            background-color: #3296a5;
             color: white;
             border: none;
             padding: 8px 16px;
@@ -381,7 +386,7 @@
             font-size: 0.8rem;
             background-color: var(--surface-color);
             color: var(--text-color-muted);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border-color-second);
             padding: 6px 10px;
             font-weight: 500;
             box-shadow: none;
@@ -767,7 +772,8 @@
         }
 
         html[data-theme="dark"] .video-card.playing {
-            background-color: rgba(var(--primary-color-rgb), 0.15); /* Slightly more pronounced background */
+            background-color: rgba(var(--primary-color-rgb), 0.15);
+            /* Slightly more pronounced background */
             border-color: var(--primary-color-dark);
         }
 
@@ -1079,7 +1085,8 @@
                 /* Ensure it stays in flow */
                 flex-shrink: 1;
                 /* Allow sidebar to shrink if needed, though unlikely now */
-                order: 2; /* Display after main content */
+                order: 2;
+                /* Display after main content */
             }
 
             .sidebar-resizer {
@@ -1111,7 +1118,8 @@
                 /* Reduce padding */
                 overflow-y: visible;
                 /* Allow content to scroll with the body */
-                order: 1; /* Display before sidebar */
+                order: 1;
+                /* Display before sidebar */
             }
 
             .main-header {
@@ -1156,7 +1164,8 @@
             input[type="text"],
             input[type="url"],
             input[type="search"] {
-                font-size: 16px; /* Prevent auto-zoom on iOS */
+                font-size: 16px;
+                /* Prevent auto-zoom on iOS */
             }
 
             .player-wrapper {
@@ -1187,6 +1196,11 @@
             .playlist-item .controls {
                 /* Make controls always visible on touch for easier access */
                 opacity: 1;
+            }
+
+            .video-controls .drag-handle {
+
+                /* Hide drag handle on mobile */
             }
 
             .video-info {
@@ -1234,23 +1248,20 @@
 
             /* --- Mobile Tap Feedback --- */
             .playlist-item:active {
-                background-color: var(--hover-bg-color); /* Reuse hover color for feedback */
-                transition: background-color 0.05s ease-out; /* Faster feedback transition */
+                background-color: var(--hover-bg-color);
+                /* Reuse hover color for feedback */
+                transition: background-color 0.05s ease-out;
+                /* Faster feedback transition */
             }
 
             .video-card:active {
-                transform: scale(0.98); /* Slight shrink effect */
+                transform: scale(0.98);
+                /* Slight shrink effect */
                 background-color: var(--hover-bg-color);
                 transition: background-color 0.05s ease-out, transform 0.05s ease-out;
             }
-            /* --- End Mobile Tap Feedback --- */
 
-            .video-controls .drag-handle {
-                /* Increase touch area without making icon huge */
-                padding: 12px 10px; /* Generous padding */
-                margin: -8px -6px; /* Negative margin to pull it back visually */
-                /* Adjust margin values as needed to align visually */
-            }
+            /* --- End Mobile Tap Feedback --- */
 
         }
 

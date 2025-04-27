@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Playlist Manager">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
     <title>Playlist Manager</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +16,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
         rel="stylesheet">
     <link rel="icon" href="./icon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon.png">
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -33,7 +37,7 @@
                     <div class="form-section">
                         <label for="playlistName">Create New Playlist</label>
                         <input type="text" id="playlistName" placeholder="E.g., Coding Music">
-                        <button id="createPlaylistBtn" style="margin-top: 8px;">
+                        <button id="createPlaylistBtn" style="margin-top: 8px; border-radius: 15px">
                             <!-- SVG Placeholder: Plus icon -->
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
                                 viewBox="0 0 16 16">
