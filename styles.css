@@ -39,9 +39,9 @@
 
 
             /* --- Light Theme --- */
-            --primary-color: #11849d;
-            --primary-color-dark: #0d697c;
-            --primary-color-light: #d1f0f7;
+            --primary-color: #2fa1d3;
+            --primary-color-dark: #49a5c1;
+            --primary-color-light: #ebfaff;
             /* Keep this light for contrast */
             --background-color: #ffffff;
             /* Pure white */
@@ -70,19 +70,19 @@
             --resizer-color: var(--border-color);
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
-            --primary-color-rgb: 17, 132, 157;
+            --primary-color-rgb: 211, 47, 47;
         }
 
         html[data-theme="dark"] {
-            --primary-color: #11849d;
+            --primary-color: #4299bb;
             /* Keep red vibrant */
-            --primary-color-dark: #0d697c;
+            --primary-color-dark: #378faf;
             /* Lighter red for hover/active */
-            --primary-color-light: rgba(17, 132, 157, 0.1);
+            --primary-color-light: rgba(229, 115, 115, 0.1);
             /* Subtle highlight */
             --background-color: #131316;
             /* Much darker background */
-            --surface-color: #18181b;
+            --surface-color: #131316;
             /* Darker surface */
             --surface-color-alt: #2a2a2a;
             /* Slightly lighter dark */
@@ -98,11 +98,11 @@
             /* Second Color */
             --border-color-second: #333333;
             /* Button Color */
-            --button-color: #26272b;
+            --button-color: #18181b;
             /* Subtle inner border */
             --hover-bg-color: #2c2c2c;
             /* Darker hover */
-            --focus-ring-color: rgba(229, 115, 115, 0.3);
+            --focus-ring-color: rgb(115 183 229 / 30%);
             /* Keep focus visible */
             --icon-color: #a0a0a0;
             --icon-color-hover: var(--text-color);
@@ -112,7 +112,7 @@
             --resizer-color: var(--border-color);
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
-            --primary-color-rgb: 17, 132, 157;
+            --primary-color-rgb: 229, 115, 115;
         }
 
 
@@ -182,7 +182,6 @@
             width: var(--sidebar-default-width);
             min-width: var(--sidebar-min-width);
             max-width: var(--sidebar-max-width);
-            background-color: var(--surface-color);
             border-right: 1px solid var(--border-color-light);
             display: flex;
             flex-direction: column;
@@ -231,33 +230,43 @@
 
         .sidebar-content {
             /* Scrollable area */
-            padding: 20px;
+            padding: 15px; /* Adjusted padding */
             overflow-y: auto;
             flex-grow: 1;
+            border: 1px solid var(--border-color-light); /* Added border */
+            border-radius: var(--border-radius-lg); /* Added border-radius */
+            margin: 10px 10px 5px 10px; /* Added margin (Top, Sides, Bottom) */
+            background-color: var(--surface-color); /* Ensure background color */
+            transition: var(--transition-default); /* Added transition */
+            transition-property: background-color, border-color, padding, margin; /* Added transition properties */
         }
 
         .sidebar-footer {
-            padding: 16px 20px;
-            border-top: 1px solid var(--border-color-light);
+            padding: 15px; /* Adjusted padding */
+            /* border-top: 1px solid var(--border-color-light); */ /* Removed original border-top */
             flex-shrink: 0;
             background-color: var(--surface-color);
-            /* Ensure bg matches */
             transition: var(--transition-default);
-            transition-property: background-color, border-color;
+            transition-property: background-color, border-color, padding, margin; /* Added transition properties */
+            border: 1px solid var(--border-color-light); /* Added border */
+            border-radius: var(--border-radius-lg); /* Added border-radius */
+            margin: 5px 10px 10px 10px; /* Added margin (Top, Sides, Bottom) */
         }
 
         .sidebar-header {
-            margin-bottom: 20px;
+             /* Keep default or remove if not needed */
+             /* Add horizontal padding to align with margined content/footer */
         }
 
         .sidebar h2 {
             font-weight: 700;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             color: var(--text-color);
             display: flex;
             align-items: center;
             gap: 8px;
             margin-bottom: 16px;
+            margin-top: -4px;
             transition: color var(--transition-speed) var(--transition-timing);
         }
 
@@ -321,7 +330,7 @@
 
         /* Button Styles */
         button {
-            background-color: #3296a5;
+            background-color: #26a3b5;
             color: white;
             border: none;
             padding: 8px 16px;
@@ -436,23 +445,47 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: background-color var(--transition-speed) var(--transition-timing), color var(--transition-speed) var(--transition-timing);
+            transition: background-color var(--transition-speed) var(--transition-timing), color var(--transition-speed) var(--transition-timing), border-color 0.1s ease-out;
             position: relative;
             font-size: 0.9rem;
+            border: 1px solid transparent;
         }
 
         .playlist-item:hover {
             background-color: var(--hover-bg-color);
+            border-color: var(--border-color-light);
         }
 
         .playlist-item.active {
-            background-color: var(--primary-color-light);
+            background-color: rgb(115 159 229 / 10%);
             color: var(--primary-color-dark);
             font-weight: 600;
+            border-color: var(--primary-color-light);
         }
 
         html[data-theme="dark"] .playlist-item.active {
             color: var(--primary-color);
+            border-color: rgb(115 196 229 / 30%);
+        }
+
+        /* Playlist Drag & Drop Styles */
+        .playlist-item[draggable="true"] {
+            cursor: grab;
+        }
+
+        .playlist-item.dragging {
+            opacity: 0.4;
+            cursor: grabbing;
+            background: var(--surface-color-alt);
+            box-shadow: var(--shadow-md);
+            border-color: var(--border-color);
+        }
+
+        /* Playlist drag-over style (similar to video card drag-over) */
+        .playlist-item.drag-over {
+            outline: 2px dashed var(--primary-color);
+            outline-offset: -2px;
+            background-color: var(--hover-bg-color);
         }
 
         .playlist-name {
@@ -461,6 +494,7 @@
             text-overflow: ellipsis;
             margin-right: 8px;
             flex-grow: 1;
+            pointer-events: none;
         }
 
         .playlist-count {
@@ -469,6 +503,7 @@
             margin-left: 4px;
             font-weight: 400;
             flex-shrink: 0;
+            pointer-events: none;
         }
 
         .playlist-item.active .playlist-count {
@@ -523,9 +558,12 @@
         /* --- Main Content --- */
         .main-content {
             flex: 1;
-            padding: 24px 32px;
+            padding: 10px 25px;
             overflow-y: auto;
             transition: background-color var(--transition-speed) var(--transition-timing);
+            border: 1px solid var(--border-color-light);
+            border-radius: var(--border-radius-lg);
+            margin: 10px 10px 10px 10px;
         }
 
         .main-header {
@@ -634,13 +672,13 @@
             padding: 10px 20px;
             border-radius: var(--border-radius-lg);
             box-shadow: var(--shadow-sm);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             border: 1px solid var(--border-color-light);
             transition: var(--transition-default);
             transition-property: background-color, border-color, box-shadow;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .video-form label {
@@ -713,6 +751,34 @@
             padding-bottom: 56.25%;
             height: 0;
             overflow: hidden;
+            transition: opacity var(--transition-speed) ease-in-out, height var(--transition-speed) ease-in-out;
+        }
+
+        /* Style to hide the video when audio-only is active */
+        body.audio-only-active .player-container {
+            height: 0 !important;
+            padding-bottom: 0 !important;
+            overflow: hidden;
+            opacity: 0;
+        }
+
+        /* Keep the wrapper visible but maybe add an indicator? */
+        body.audio-only-active .player-wrapper {
+            min-height: 30px;
+            background-color: var(--surface-color-alt);
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Ensure close button is still visible and positioned correctly */
+        body.audio-only-active .close-player-btn {
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: transparent;
+            color: var(--icon-color);
+        }
+        body.audio-only-active .close-player-btn:hover {
+            background-color: var(--hover-bg-color);
+            color: var(--icon-color-hover);
         }
 
         #player {
@@ -734,12 +800,15 @@
         }
 
         .video-card {
-            background-color: var(--surface-color);
-            border-radius: var(--border-radius-md);
+            border-radius: var(
+            --border-radius-md);
             overflow: hidden;
-            box-shadow: var(--shadow-xs);
+            box-shadow: var(
+            --shadow-xs);
+            background-color: var(--button-color);
             cursor: pointer;
-            transition: var(--transition-default);
+            transition: var(
+            --transition-default);
             transition-property: transform, box-shadow, background-color, border-color;
             display: flex;
             flex-direction: column;
@@ -760,7 +829,7 @@
             box-shadow: var(--shadow-lg);
             transform: scale(0.98);
             cursor: grabbing;
-            border-color: var(--primary-color);
+            /* border-color: var(--primary-color); */ /* Removed border */
             background: var(--surface-color-alt);
         }
 
@@ -769,36 +838,39 @@
             border-color: var(--primary-color);
             box-shadow: var(--shadow-md);
             background-color: var(--primary-color-light);
+            /* Keep the transparent border placeholder for consistency */
+            border-width: 1px;
+            border-style: solid;
         }
 
         html[data-theme="dark"] .video-card.playing {
             background-color: rgba(var(--primary-color-rgb), 0.15);
-            /* Slightly more pronounced background */
             border-color: var(--primary-color-dark);
         }
 
-        /* Style for the drop target indicator */
+        /* Remove ::before/::after and inset box-shadow styles */
+        /*
+        .video-card::before,
+        .video-card::after { ... }
+        .video-card::before { ... }
+        .video-card::after { ... }
+        .video-card.drag-over-top::before,
+        .video-card.drag-over-bottom::after { ... }
+        .video-card.drag-over-top { ... }
+        .video-card.drag-over-bottom { ... }
+        */
+
+        /* Restore the original drag-over outline style */
         .video-card.drag-over {
-            box-shadow: var(--shadow-md);
+            box-shadow: var(--shadow-md); /* Keep hover shadow */
             /* Use border or outline for drop indicator */
             outline: 2px dashed var(--primary-color);
-            outline-offset: -2px;
-            /* Inside the card */
+            outline-offset: -2px; /* Inside the card */
         }
 
-        /* Optional: Add space indicator between cards */
-        .drop-indicator {
-            height: 40px;
-            /* Adjust height as needed */
-            background-color: rgba(var(--primary-color-rgb), 0.1);
-            /* Use RGB version */
-            border: 1px dashed var(--primary-color);
-            border-radius: var(--border-radius-md);
-            margin: 10px 0;
-            /* Match gap */
-            grid-column: 1 / -1;
-            /* Span across grid columns */
-        }
+
+        /* Optional: Add space indicator between cards (Removed as we use ::before/::after now) */
+        /* .drop-indicator { ... } */
 
 
         .thumbnail-wrapper {
@@ -1096,11 +1168,11 @@
 
             .sidebar-content {
                 /* Adjust padding slightly */
-                padding: 16px;
-                max-height: 50vh;
+                padding: 12px; /* Adjusted mobile padding */
                 /* Limit height to prevent excessive scrolling */
                 overflow-y: auto;
                 /* Ensure it's scrollable if content overflows */
+                margin: 10px 10px 20px 10px; /* Keep margin */
             }
 
             /* Add this rule to hide the main sidebar title on mobile */
@@ -1108,9 +1180,18 @@
                 display: none;
             }
 
+            /* Adjust header padding on mobile */
+             .sidebar-header {
+                 padding: 0 10px; /* Keep horizontal padding */
+             }
+
             .sidebar-footer {
-                padding: 12px 16px;
-                /* Adjust padding */
+                padding: 12px 16px; /* Restore original mobile padding */
+                margin: 0; /* Remove margin added previously */
+                border: none; /* Remove border added previously */
+                border-top: 1px solid var(--border-color-light); /* Restore original border-top */
+                border-radius: 0; /* Remove border-radius */
+                /* Transition property will inherit from the base rule */
             }
 
             .main-content {
@@ -1144,6 +1225,11 @@
                 /* Take full width */
                 justify-content: space-between;
                 /* Space out elements */
+            }
+
+            /* Hide the audio only control group on mobile */
+            #audioOnlyControlGroup {
+                display: none;
             }
 
             .video-form {

@@ -25,6 +25,7 @@ const closePlayerBtn = document.getElementById('closePlayerBtn');
 const sidebarEl = document.querySelector('.sidebar');
 const sidebarResizerEl = document.getElementById('sidebarResizer');
 const shufflePlaylistBtn = document.getElementById('shufflePlaylistBtn'); // Added
+const audioOnlyToggle = document.getElementById('audioOnlyToggle'); // Added
 // Pagination Elements
 const paginationControlsEl = document.getElementById('paginationControls');
 const prevPageBtn = document.getElementById('prevPageBtn');
@@ -38,12 +39,17 @@ let ytPlayer = null;
 let isPlayerReady = false; // New state variable
 let videoIdToPlayOnReady = null; // New state variable
 let isAutoplayEnabled = false;
+let isAudioOnlyMode = false; // Added state for audio-only
 let currentlyPlayingVideoId = null;
 let draggedVideoId = null; // ID of the video being dragged
 let dragTargetElement = null; // Element we are dragging over
 let currentTheme = 'light';
 let isResizing = false;
 let lastSidebarWidth = null;
+// Touch drag state
+let isTouchDragging = false;
+let touchDragStartY = 0;
+let touchDraggedElement = null;
 // Pagination State
 const videosPerPage = 20; // Number of videos to show per page
 let currentPage = 1;
@@ -67,6 +73,7 @@ function init() {
     loadTheme();
     loadPlaylists();
     loadAutoplaySetting();
+    loadAudioOnlySetting(); // Added
     loadSidebarWidth();
     renderPlaylists();
 
@@ -141,11 +148,20 @@ function setupEventListeners() {
     videoUrlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !addVideoBtn.disabled) handleAddVideo(); });
     videoUrlInput.addEventListener('input', () => { addVideoBtn.disabled = videoUrlInput.value.trim() === ''; }); // Enable/disable add button
     autoplayToggle.addEventListener('change', handleAutoplayToggle);
+    audioOnlyToggle.addEventListener('change', handleAudioOnlyToggle); // Listener for the checkbox change
+
+    // Attach the visual click handler to the parent .switch element for both toggles
     autoplaySwitchDiv.addEventListener('click', handleVisualSwitchClick);
+    // Ensure we target the correct parent switch for audio-only as well
+    const audioOnlySwitchDiv = audioOnlyToggle.closest('.switch');
+    if (audioOnlySwitchDiv) {
+        audioOnlySwitchDiv.addEventListener('click', handleVisualSwitchClick);
+    }
+
     clearPlaylistBtn.addEventListener('click', handleClearPlaylist);
     themeToggleBtn.addEventListener('click', toggleTheme);
     shufflePlaylistBtn.addEventListener('click', handleShufflePlaylist); // Added
-    playlistSearchInput.addEventListener('input', handlePlaylistSearch);
+    playlistSearchInput.addEventListener('input', debounce(handlePlaylistSearch, 300));
     importBtn.addEventListener('click', () => importFileEl.click());
     importFileEl.addEventListener('change', handleImportPlaylists);
     exportBtn.addEventListener('click', handleExportPlaylists);
@@ -163,7 +179,7 @@ function setupEventListeners() {
             event.stopPropagation(); handleRenamePlaylist(playlistId);
         } else if (event.target.closest('.delete-btn')) {
             event.stopPropagation(); handleDeletePlaylist(playlistId);
-        } else {
+        } else if (!event.target.closest('.controls')) {
             selectPlaylist(playlistId);
         }
     });
@@ -204,6 +220,19 @@ function setupEventListeners() {
             // renderPaginationControls() is called by renderVideos
         }
     });
+
+    // --- Touch Event Listeners for Drag/Drop ---
+    videoGridEl.addEventListener('touchstart', handleTouchStart, { passive: false }); // Need passive: false for preventDefault
+    videoGridEl.addEventListener('touchmove', handleTouchMove, { passive: false }); // Need passive: false for preventDefault
+    videoGridEl.addEventListener('touchend', handleTouchEnd);
+    videoGridEl.addEventListener('touchcancel', handleTouchEnd); // Treat cancel same as end
+
+    // Playlist Drag & Drop Listeners (New)
+    playlistListEl.addEventListener('dragstart', handlePlaylistDragStart);
+    playlistListEl.addEventListener('dragend', handlePlaylistDragEnd);
+    playlistListEl.addEventListener('dragover', handlePlaylistDragOver);
+    playlistListEl.addEventListener('dragleave', handlePlaylistDragLeave);
+    playlistListEl.addEventListener('drop', handlePlaylistDrop);
 }
 
 // --- Drag and Drop ---
@@ -226,64 +255,91 @@ function handleDragStart(event) {
 }
 
 function handleDragEnd(event) {
+    // Ensure dragging class is removed
     const draggingElement = videoGridEl.querySelector('.video-card.dragging');
     if (draggingElement) {
         draggingElement.classList.remove('dragging');
     }
+    // Ensure highlight styles are cleared definitively
     clearDragOverStyles();
+    // Reset state variables
     draggedVideoId = null;
     dragTargetElement = null;
 }
 
 function handleDragOver(event) {
     event.preventDefault(); // Necessary to allow drop
-    if (!draggedVideoId) return; // Only react if dragging started within the grid
+    if (!draggedVideoId) return;
+    event.dataTransfer.dropEffect = 'move'; // Assume move is possible
 
     const targetCard = event.target.closest('.video-card');
+
+    // Determine the current valid target card
+    let currentTarget = null;
     if (targetCard && targetCard.dataset.videoId !== draggedVideoId) {
-        // Only add drag-over style if it's a new target or different from the current one
-        if (dragTargetElement !== targetCard) {
-            clearDragOverStyles(); // Clear previous styles
-            targetCard.classList.add('drag-over');
-            dragTargetElement = targetCard;
-        }
-        event.dataTransfer.dropEffect = 'move';
-    } else {
-        // If hovering over empty space or the dragged item itself, clear styles
+        currentTarget = targetCard;
+    }
+
+    // If the target is different from the currently highlighted one
+    if (currentTarget !== dragTargetElement) {
+        // Remove highlight from the previous target (if any)
         if (dragTargetElement) {
-            clearDragOverStyles();
-            dragTargetElement = null;
+            dragTargetElement.classList.remove('drag-over');
         }
-        event.dataTransfer.dropEffect = 'none'; // Indicate not droppable here
+        // Add highlight to the new target (if any)
+        if (currentTarget) {
+            currentTarget.classList.add('drag-over');
+        }
+        // Update the tracked target element
+        dragTargetElement = currentTarget;
+    }
+
+    // If not over a valid target card, ensure no highlight (handled by the logic above)
+    if (!currentTarget) {
+         event.dataTransfer.dropEffect = 'none'; // Indicate not droppable here
     }
 }
 
 function handleDragLeave(event) {
-    // Check if the mouse truly left the potential drop target
-    const targetCard = event.target.closest('.video-card');
-    if (targetCard && targetCard === dragTargetElement && !targetCard.contains(event.relatedTarget)) {
-        clearDragOverStyles();
+    // Only clear styles if the mouse leaves the bounds of the entire video grid container.
+    // This prevents flicker when moving between cards.
+    if (!event.relatedTarget || !videoGridEl.contains(event.relatedTarget)) {
+        if (dragTargetElement) {
+            dragTargetElement.classList.remove('drag-over');
+        }
         dragTargetElement = null;
+         // console.log("Left grid boundary"); // Optional debug log
     }
+     // Note: dragover handles clearing when moving between cards within the grid.
 }
 
 function handleDrop(event) {
     event.preventDefault();
-    clearDragOverStyles();
-    const targetCard = event.target.closest('.video-card');
-    const dropTargetId = targetCard ? targetCard.dataset.videoId : null;
+    const dropTargetId = dragTargetElement ? dragTargetElement.dataset.videoId : null;
 
-    if (draggedVideoId && dropTargetId !== draggedVideoId) {
+    // Clear styles regardless of drop validity
+    clearDragOverStyles();
+
+    if (draggedVideoId && dropTargetId && dropTargetId !== draggedVideoId) {
+        // Call the reorder function
         handleReorderVideo(draggedVideoId, dropTargetId);
+    } else {
+        console.log("Drop occurred on invalid target or self.");
     }
-    draggedVideoId = null;
-    dragTargetElement = null;
+
+    // Resetting state happens in handleDragEnd, which is called after drop
 }
 
 function clearDragOverStyles() {
-    videoGridEl.querySelectorAll('.video-card.drag-over').forEach(card => {
-        card.classList.remove('drag-over');
-    });
+    // Remove the original drag-over class from any card that might have it
+    const highlightedCard = videoGridEl.querySelector('.video-card.drag-over');
+    if(highlightedCard) {
+        highlightedCard.classList.remove('drag-over');
+    }
+    // It's also safe to clear from dragTargetElement if it exists
+    if (dragTargetElement) {
+         dragTargetElement.classList.remove('drag-over');
+    }
 }
 
 // --- Theme Management ---
@@ -317,12 +373,18 @@ function onYouTubeIframeAPIReady() {
     // Only create player if the element exists
     if (document.getElementById('player')) {
         ytPlayer = new YT.Player('player', {
-            height: '100%', width: '100%',
-            playerVars: { 'playsinline': 1, 'rel': 0 }, // playsinline for mobile, rel=0 to reduce related videos
+            height: '100%', 
+            width: '100%',
+            playerVars: { 
+                'playsinline': 1,  // Already set for inline playback
+                'rel': 0,          // Disable related videos
+                'enablejsapi': 1,  // Ensure JavaScript API is enabled
+                'autoplay': 1      // Autoplay (may help with background playback)
+            },
             events: {
                 'onReady': onPlayerReady,
                 'onStateChange': onPlayerStateChange,
-                'onError': onPlayerError // Add error handler
+                'onError': onPlayerError
             }
         });
     } else {
@@ -347,42 +409,85 @@ function onPlayerReady(event) {
 }
 
 function onPlayerStateChange(event) {
-    // console.log("Player state changed:", event.data); // Log state changes for debugging
     if (event.data === YT.PlayerState.PLAYING) {
         currentlyPlayingVideoId = getCurrentPlayingVideoIdFromApi();
-        // Highlight the currently playing video card? (Optional enhancement)
+        updatePlayingVideoHighlight(currentlyPlayingVideoId);
+
+        // Update Media Session metadata when playback starts
+        const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+        if (currentPlaylist) {
+            const videoData = currentPlaylist.videos.find(v => v.id === currentlyPlayingVideoId);
+            if (videoData) {
+                updateMediaSessionMetadata(videoData);
+            }
+        }
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+        }
     }
-    if (event.data === YT.PlayerState.ENDED && isAutoplayEnabled) {
+    if (event.data === YT.PlayerState.PAUSED) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = "paused";
+        }
+    }
+    if (event.data === YT.PlayerState.ENDED) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = "none";
+        }
         playNextVideo();
     }
-    // Add more state handling if needed (BUFFERING, CUED, etc.)
 }
 
 // Added a dedicated error handler
 function onPlayerError(event) {
     console.error('YouTube Player Error:', event.data);
     let errorMsg = 'An unknown player error occurred.';
+    const videoId = getCurrentPlayingVideoIdFromApi(); // Get ID if possible
+    const videoUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : 'Unknown video';
+
+    console.error(`Error occurred for video: ${videoUrl}`); // Log the URL
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'; // Update state on error
+
+    let shouldSkip = false; // Flag to determine if we should try skipping
+
     switch (event.data) {
         case 2: // Invalid parameter
             errorMsg = 'Invalid video ID or player parameter.';
+            shouldSkip = true; // Attempt to skip on this error too
             break;
         case 5: // HTML5 player error
             errorMsg = 'Error in the HTML5 player.';
+            shouldSkip = true; // Attempt to skip on this error too
             break;
         case 100: // Video not found
             errorMsg = 'Video not found (removed or private).';
+            shouldSkip = true;
             break;
         case 101: // Playback not allowed
         case 150: // Playback not allowed
-            errorMsg = 'Playback not allowed by the video owner.';
+            errorMsg = 'Playback disallowed by video owner. Try watching directly on YouTube.';
+            shouldSkip = true;
             break;
         default:
             errorMsg = `Player error code: ${event.data}`;
+            shouldSkip = true; // Attempt to skip on unknown errors as well
     }
+
+    // Show toast regardless of whether we skip or not (unless handled specially below)
     showToast(`Player Error: ${errorMsg}`, 'error');
-    // Optional: try to play next video or stop?
-    // stopVideo();
-    // playerWrapperEl.classList.add('hidden');
+
+    // Attempt to skip to the next video if autoplay is enabled and skipping is flagged
+    if (isAutoplayEnabled && shouldSkip) {
+        showToast(`${errorMsg} Skipping to next video.`, 'info', 4000); // Show a follow-up toast
+        // Use a small delay to allow the error toast to show first,
+        // and prevent potential race conditions if errors happen rapidly.
+        setTimeout(playNextVideo, 500);
+    } else {
+        // Optional: If not autoplaying or not skipping, maybe hide player?
+        // stopVideo();
+        // playerWrapperEl.classList.add('hidden');
+    }
 }
 
 function getCurrentPlayingVideoIdFromApi() {
@@ -395,13 +500,38 @@ function getCurrentPlayingVideoIdFromApi() {
 
 function playNextVideo() {
     const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
-    if (!currentPlaylist || currentPlaylist.videos.length < 1 || !currentlyPlayingVideoId) return;
+    if (!currentPlaylist || currentPlaylist.videos.length < 1) return; // Check if playlist is empty
+
+    // If there's no currently playing video ID tracked, or only one video, don't proceed
+    if (!currentlyPlayingVideoId && currentPlaylist.videos.length > 0) {
+        // Maybe play the first video if nothing was playing? Or just return?
+        // For now, let's assume playNext is only called after a video ends/errors.
+        console.log("playNextVideo called but no video was playing. Starting from first video.");
+        playVideo(currentPlaylist.videos[0].id); // Try playing the first video as a fallback
+        return;
+    }
+    if (!currentlyPlayingVideoId || currentPlaylist.videos.length < 2) return; // Need at least 2 videos to advance
+
     const currentIndex = currentPlaylist.videos.findIndex(v => v.id === currentlyPlayingVideoId);
-    if (currentIndex === -1) return; // Should not happen if playing
+    if (currentIndex === -1) {
+        // If the currently tracked video isn't found (e.g., deleted?), play the first one
+        console.warn("Currently playing video not found in playlist during playNext. Playing first video.");
+        if (currentPlaylist.videos.length > 0) {
+            playVideo(currentPlaylist.videos[0].id);
+        }
+        return;
+    }
+
     const nextIndex = (currentIndex + 1) % currentPlaylist.videos.length;
     const nextVideo = currentPlaylist.videos[nextIndex];
     if (nextVideo) {
+        console.log(`Autoplaying next video: ${nextVideo.title} (Index: ${nextIndex})`);
         playVideo(nextVideo.id);
+    } else {
+        console.error(`Could not find next video at index ${nextIndex}`);
+        // Maybe stop playback or try the first video again?
+        stopVideo();
+        playerWrapperEl.classList.add('hidden');
     }
 }
 
@@ -417,6 +547,24 @@ function saveAutoplaySetting() { localStorage.setItem('autoplayEnabled', isAutop
 function loadAutoplaySetting() {
     isAutoplayEnabled = localStorage.getItem('autoplayEnabled') === 'true';
     autoplayToggle.checked = isAutoplayEnabled;
+}
+
+// Added functions for audio-only state
+function saveAudioOnlySetting() { localStorage.setItem('audioOnlyEnabled', isAudioOnlyMode); }
+function loadAudioOnlySetting() {
+    isAudioOnlyMode = localStorage.getItem('audioOnlyEnabled') === 'true';
+    audioOnlyToggle.checked = isAudioOnlyMode;
+    // Apply the class initially if needed
+    applyAudioOnlyClass();
+}
+
+// Function to apply/remove the class based on state
+function applyAudioOnlyClass() {
+    if (isAudioOnlyMode) {
+        bodyEl.classList.add('audio-only-active');
+    } else {
+        bodyEl.classList.remove('audio-only-active');
+    }
 }
 
 // --- Playlist Management ---
@@ -486,6 +634,13 @@ function selectPlaylist(id) {
     currentPage = 1; // Reset to first page when selecting a playlist
     saveLastSelectedPlaylist(id);
 
+    // --- UX Improvement: Clear search when selecting a playlist ---
+    if (playlistSearchInput.value !== '') {
+        playlistSearchInput.value = '';
+        // Re-rendering playlists will happen below anyway
+    }
+    // --- End UX Improvement ---
+
     // Update UI
     currentPlaylistTitleEl.textContent = escapeHTML(selectedPlaylist.name);
     videoFormEl.classList.remove('hidden');
@@ -493,7 +648,8 @@ function selectPlaylist(id) {
     addVideoBtn.disabled = videoUrlInput.value.trim() === ''; // Set initial state based on input
     videoPlaceholderEl.classList.add('hidden');
     playerWrapperEl.classList.add('hidden');
-    stopVideo();
+    stopVideo(); // This will also clear the highlight
+    updatePlayingVideoHighlight(null); // Explicitly clear highlight
 
     renderPlaylists(); // Update active state
     renderVideos(); // Render videos for the selected playlist
@@ -552,6 +708,23 @@ function handleShufflePlaylist() {
 // --- End Playlist Shuffle Functionality ---
 
 // --- Video Management ---
+
+// Helper function to update the visual highlight on the playing video card
+function updatePlayingVideoHighlight(videoId) {
+    // Remove 'playing' class from all video cards first
+    videoGridEl.querySelectorAll('.video-card.playing').forEach(card => {
+        card.classList.remove('playing');
+    });
+
+    // Add 'playing' class to the current video card if an ID is provided
+    if (videoId) {
+        const currentVideoCard = videoGridEl.querySelector(`.video-card[data-video-id="${videoId}"]`);
+        if (currentVideoCard) {
+            currentVideoCard.classList.add('playing');
+        }
+    }
+}
+
 async function handleAddVideo() {
     const url = videoUrlInput.value.trim();
     const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
@@ -641,6 +814,7 @@ function handleDeleteVideo(videoId) {
     showToast(`Removed "${escapeHTML(videoTitle)}".`, 'info');
 }
 
+// Modified to accept dropEffect ('before' or 'after')
 function handleReorderVideo(videoIdToMove, targetVideoId) {
     const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
     if (!currentPlaylist) return;
@@ -650,60 +824,84 @@ function handleReorderVideo(videoIdToMove, targetVideoId) {
 
     const [videoToMove] = currentPlaylist.videos.splice(videoToMoveIndex, 1); // Remove the video
 
-    if (targetVideoId === null) {
-        // Dropped at the end (or empty space)
-        currentPlaylist.videos.push(videoToMove);
+    // Find the target's NEW index after the splice
+    const targetIndex = currentPlaylist.videos.findIndex(v => v.id === targetVideoId);
+
+    if (targetIndex !== -1) {
+        // Original behavior: Always insert *before* the target video's new position
+        currentPlaylist.videos.splice(targetIndex, 0, videoToMove);
     } else {
-        const targetIndex = currentPlaylist.videos.findIndex(v => v.id === targetVideoId);
-        if (targetIndex !== -1) {
-            // Insert before the target video
-            currentPlaylist.videos.splice(targetIndex, 0, videoToMove);
-        } else {
-            // Target not found (should not happen if drag logic is correct), append to end
-            currentPlaylist.videos.push(videoToMove);
-        }
+        // Target not found, append to end as fallback
+        console.warn("Reorder target not found after splice, appending video to end.");
+        currentPlaylist.videos.push(videoToMove);
     }
 
     savePlaylists();
     renderVideos(); // Re-render the grid with the new order
-    // No toast needed for reorder unless desired
 }
 
 function playVideo(videoId) {
     // Ensure the player container is visible first
-    playerWrapperEl.classList.remove('hidden');
+    // UNLESS we are in audio-only mode
+    if (!isAudioOnlyMode) {
+        playerWrapperEl.classList.remove('hidden');
+    } else {
+        // If audio-only is active, ensure the wrapper *is* shown
+        // (because the CSS will hide the inner container)
+        // but don't scroll to it.
+         playerWrapperEl.classList.remove('hidden');
+    }
+
     currentlyPlayingVideoId = videoId; // Set this immediately for state tracking
+    updatePlayingVideoHighlight(videoId); // Highlight the selected video immediately
+    applyAudioOnlyClass(); // Ensure correct class is applied
 
     // Check if player is initialized AND ready
     if (ytPlayer && isPlayerReady) {
-        console.log("Player exists and is ready. Loading video:", videoId);
+        console.log("Player exists and is ready. Loading and playing video:", videoId);
         try {
+            // Use loadVideoById to load the video
             ytPlayer.loadVideoById(videoId);
-            // Scroll player into view smoothly, slight delay can help
-            setTimeout(() => {
-                if (playerWrapperEl.offsetParent !== null) { // Check if element is visible before scrolling
-                    playerWrapperEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-            }, 100);
+            // Explicitly call playVideo() right after loading.
+            // This might reinforce the user-initiated playback signal on some browsers.
+            ytPlayer.playVideo();
+
+            // Scroll player into view smoothly, but only if not in audio-only mode
+            if (!isAudioOnlyMode) {
+                setTimeout(() => {
+                    if (playerWrapperEl.offsetParent !== null) { // Check if element is visible before scrolling
+                        playerWrapperEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }, 100);
+            }
         } catch (error) {
-            console.error("Error calling loadVideoById:", error);
-            showToast("Failed to load video in player.", "error");
-            stopVideo(); // Reset state if loading fails
-            playerWrapperEl.classList.add('hidden'); // Hide player if unusable
+            console.error("Error calling loadVideoById or playVideo:", error);
+            showToast("Failed to load or play video in player.", "error");
+            handleClosePlayer(); // Reset state if loading fails
             videoIdToPlayOnReady = null; // Clear any queue if loading failed
         }
     } else {
         // Player not ready or not initialized yet, queue the video ID
         console.log(`Player not ready (Player: ${!!ytPlayer}, Ready: ${isPlayerReady}). Queuing video:`, videoId);
         videoIdToPlayOnReady = videoId;
-        // If the player doesn't even exist yet, onYouTubeIframeAPIReady will eventually create it,
-        // and onPlayerReady will pick up the queued video.
-        // If the player exists but isn't ready, onPlayerReady will pick it up.
-
-        // Optional: Show a loading state on the player itself
-        // e.g., display a message inside the #player div or on the wrapper
-        // Example: document.getElementById('player').innerHTML = '<p>Loading player...</p>';
+        // The onPlayerReady handler will call playVideo(videoIdToPlayOnReady) again,
+        // and the playVideo logic above will then execute, including the playVideo() call.
     }
+
+    // --- Media Session Update ---
+    // Metadata is already set here. Playback state will be updated in onPlayerStateChange.
+    const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+    if (currentPlaylist) {
+        const videoData = currentPlaylist.videos.find(v => v.id === videoId);
+        if (videoData) {
+            updateMediaSessionMetadata(videoData);
+        } else {
+             updateMediaSessionMetadata(null); // Clear if video data not found
+        }
+    } else {
+        updateMediaSessionMetadata(null); // Clear if playlist not found
+    }
+    // --- End Media Session Update ---
 }
 
 function stopVideo() {
@@ -711,6 +909,13 @@ function stopVideo() {
         ytPlayer.stopVideo();
     }
     currentlyPlayingVideoId = null;
+    updatePlayingVideoHighlight(null); // Remove highlight when stopped
+    if ('mediaSession' in navigator) { // Clear media session on stop
+        navigator.mediaSession.playbackState = 'none';
+        // Don't clear metadata here, handleClosePlayer might do it
+        // updateMediaSessionMetadata(null);
+    }
+    // Don't hide player wrapper here, handleClosePlayer does that
 }
 
 function extractVideoId(url) {
@@ -737,6 +942,7 @@ function renderPlaylists() {
             const li = document.createElement('li');
             li.className = `playlist-item ${playlist.id === currentPlaylistId ? 'active' : ''}`;
             li.dataset.id = playlist.id;
+            li.draggable = true; // Make the playlist item draggable
             li.innerHTML = `
                         <span class="playlist-name">${escapeHTML(playlist.name)}</span>
                         <span class="playlist-count">${playlist.videos.length}</span>
@@ -846,6 +1052,36 @@ function handleAutoplayToggle() {
     showToast(`Autoplay ${isAutoplayEnabled ? 'enabled' : 'disabled'}.`, 'info');
 }
 
+// Added handler for the new toggle
+function handleAudioOnlyToggle() {
+    isAudioOnlyMode = audioOnlyToggle.checked;
+    saveAudioOnlySetting();
+    applyAudioOnlyClass(); // Apply/remove the class immediately
+    showToast(`Audio-Only Mode ${isAudioOnlyMode ? 'enabled' : 'disabled'}.`, 'info');
+
+    // If a video is currently playing, adjust visibility/scrolling
+    if (currentlyPlayingVideoId) {
+        if (isAudioOnlyMode) {
+            // No need to scroll, CSS handles hiding the video
+             playerWrapperEl.classList.remove('hidden'); // Ensure wrapper is visible
+        } else {
+            // Show video and scroll into view if it was hidden
+            playerWrapperEl.classList.remove('hidden');
+            setTimeout(() => {
+                 if (playerWrapperEl.offsetParent !== null) {
+                    playerWrapperEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                 }
+            }, 100);
+        }
+    } else {
+         // If no video playing, ensure player wrapper is hidden if audio-only is disabled
+         // and no video is selected to play next
+         if (!isAudioOnlyMode && !videoIdToPlayOnReady) {
+            playerWrapperEl.classList.add('hidden');
+         }
+    }
+}
+
 // --- Import / Export ---
 function handleExportPlaylists() {
     if (playlists.length === 0) {
@@ -933,15 +1169,21 @@ function handleImportPlaylists(event) {
 }
 
 function handleVisualSwitchClick(event) {
-    // We only want to react if the click wasn't directly on the hidden input itself
-    // (though that's unlikely as it's visually hidden).
-    // This primarily ensures clicking the visual parts (slider/background) works.
-    // The label click is handled natively by the 'for' attribute.
-    if (event.target !== autoplayToggle) {
-        // Programmatically click the hidden checkbox.
+    // Find the parent switch element that was clicked
+    const switchElement = event.target.closest('.switch');
+    if (!switchElement) return; // Exit if click wasn't within a switch
+
+    // Find the actual checkbox input within this specific switch
+    const checkbox = switchElement.querySelector('input[type="checkbox"]');
+    if (!checkbox) return; // Exit if no checkbox found
+
+    // We only want to react if the click wasn't directly on the hidden input itself.
+    // This ensures clicking the visual parts (slider/background) triggers the toggle.
+    if (event.target !== checkbox) {
+        // Programmatically click the associated hidden checkbox.
         // This will toggle its 'checked' state AND trigger the 'change' event listener
-        // that we already have attached (handleAutoplayToggle).
-        autoplayToggle.click();
+        // (e.g., handleAutoplayToggle or handleAudioOnlyToggle).
+        checkbox.click();
     }
 }
 
@@ -987,8 +1229,12 @@ function showToast(message, type = 'info', duration = 3000) {
 }
 
 function handleClosePlayer() {
-    stopVideo();
+    stopVideo(); // stopVideo now handles removing the highlight
     playerWrapperEl.classList.add('hidden');
+    bodyEl.classList.remove('audio-only-active'); // Ensure class is removed on close
+    if ('mediaSession' in navigator) { // Clear media session on explicit close
+        updateMediaSessionMetadata(null);
+    }
 }
 
 function renderPaginationControls(totalVideos, totalPages) {
@@ -1008,6 +1254,321 @@ function renderPaginationControls(totalVideos, totalPages) {
 
     prevPageBtn.disabled = currentPage === 1;
     nextPageBtn.disabled = currentPage === totalPages;
+}
+
+// --- Utility ---
+
+// Debounce function: prevents function from running too often
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+};
+
+// --- Media Session API Integration ---
+
+function updateMediaSessionMetadata(video) {
+    if (!('mediaSession' in navigator)) {
+        // console.log("Media Session API not supported.");
+        return;
+    }
+
+    if (!video) {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = 'none';
+        // console.log("Media Session metadata cleared.");
+        return;
+    }
+
+    const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+    const playlistName = currentPlaylist ? currentPlaylist.name : 'Playlist';
+
+    // console.log("Updating Media Session Metadata for:", video.title);
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title: video.title,
+        artist: 'YouTube', // Replace with channel name if available
+        album: playlistName,
+        artwork: [
+            { src: video.thumbnail.replace('mqdefault', 'hqdefault'), sizes: '480x360', type: 'image/jpeg' },
+            { src: video.thumbnail, sizes: '320x180', type: 'image/jpeg' },
+        ]
+    });
+
+    // Update playback state (usually done in onPlayerStateChange)
+    // navigator.mediaSession.playbackState = "playing"; // Set this when playback actually starts
+
+    setupMediaSessionActionHandlers(); // Ensure handlers are set up
+}
+
+function setupMediaSessionActionHandlers() {
+     if (!('mediaSession' in navigator)) return;
+
+    // Clear previous handlers to avoid duplicates if called multiple times
+    navigator.mediaSession.setActionHandler('play', null);
+    navigator.mediaSession.setActionHandler('pause', null);
+    navigator.mediaSession.setActionHandler('stop', null);
+    navigator.mediaSession.setActionHandler('previoustrack', null);
+    navigator.mediaSession.setActionHandler('nexttrack', null);
+
+    // console.log("Setting up Media Session Action Handlers");
+
+    navigator.mediaSession.setActionHandler('play', () => {
+        // console.log("Media Session: Play");
+        if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+            ytPlayer.playVideo();
+             navigator.mediaSession.playbackState = "playing";
+        }
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+        // console.log("Media Session: Pause");
+        if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+            ytPlayer.pauseVideo();
+             navigator.mediaSession.playbackState = "paused";
+        }
+    });
+
+    navigator.mediaSession.setActionHandler('stop', () => {
+        // console.log("Media Session: Stop");
+        handleClosePlayer(); // Use the existing close/stop function
+    });
+
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+        // console.log("Media Session: Previous Track");
+        playPreviousVideo();
+    });
+
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+        // console.log("Media Session: Next Track");
+        playNextVideo();
+    });
+}
+
+function playPreviousVideo() {
+    const currentPlaylist = playlists.find(p => p.id === currentPlaylistId);
+    if (!currentPlaylist || currentPlaylist.videos.length < 1 || !currentlyPlayingVideoId) return;
+
+    const currentIndex = currentPlaylist.videos.findIndex(v => v.id === currentlyPlayingVideoId);
+    if (currentIndex === -1) return; // Current video not found
+
+    // Calculate previous index, wrapping around to the end
+    const prevIndex = (currentIndex - 1 + currentPlaylist.videos.length) % currentPlaylist.videos.length;
+    const prevVideo = currentPlaylist.videos[prevIndex];
+
+    if (prevVideo) {
+        playVideo(prevVideo.id);
+    }
+}
+
+// --- Touch Drag and Drop Handlers ---
+
+function handleTouchStart(event) {
+    const targetCard = event.target.closest('.video-card[draggable="true"]');
+    const dragHandle = event.target.closest('.drag-handle');
+
+    // Only start drag if touching the drag handle
+    if (targetCard && dragHandle) {
+        isTouchDragging = true;
+        draggedVideoId = targetCard.dataset.videoId;
+        touchDraggedElement = targetCard;
+        touchDragStartY = event.touches[0].clientY; // Store initial Y pos
+
+        // event.preventDefault(); // Prevent scrolling while initiating drag (can be disruptive)
+
+        // Add dragging style immediately (no delay needed like mouse drag)
+        touchDraggedElement.classList.add('dragging');
+
+        // Optional: Provide haptic feedback if supported
+        if (navigator.vibrate) {
+            navigator.vibrate(50); // Vibrate for 50ms
+        }
+    } else {
+        isTouchDragging = false; // Ensure state is reset if not dragging
+        draggedVideoId = null;
+        touchDraggedElement = null;
+    }
+}
+
+function handleTouchMove(event) {
+    if (!isTouchDragging || !touchDraggedElement) return;
+
+    event.preventDefault();
+
+    const touch = event.touches[0];
+
+    touchDraggedElement.style.visibility = 'hidden';
+    const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchDraggedElement.style.visibility = '';
+
+    const targetCard = elementUnderTouch ? elementUnderTouch.closest('.video-card') : null;
+
+    // Determine the current valid target card for touch
+    let currentTouchTarget = null;
+    if (targetCard && targetCard !== touchDraggedElement) {
+        currentTouchTarget = targetCard;
+    }
+
+    // If the target is different from the currently highlighted one
+    if (currentTouchTarget !== dragTargetElement) {
+        // Remove highlight from the previous target (if any)
+        if (dragTargetElement) {
+            dragTargetElement.classList.remove('drag-over');
+        }
+        // Add highlight to the new target (if any)
+        if (currentTouchTarget) {
+            currentTouchTarget.classList.add('drag-over');
+        }
+        // Update the tracked target element
+        dragTargetElement = currentTouchTarget;
+    }
+}
+
+function handleTouchEnd(event) {
+    if (!isTouchDragging || !touchDraggedElement) {
+         clearDragOverStyles();
+         if (touchDraggedElement) touchDraggedElement.classList.remove('dragging');
+         isTouchDragging = false;
+         draggedVideoId = null;
+         touchDraggedElement = null;
+         dragTargetElement = null;
+        return;
+    }
+
+    const dropTargetId = dragTargetElement ? dragTargetElement.dataset.videoId : null;
+
+    // Reset visual styles first
+    touchDraggedElement.classList.remove('dragging');
+    clearDragOverStyles(); // Clear highlight
+
+    // Perform the drop action
+    if (draggedVideoId && dropTargetId && dropTargetId !== draggedVideoId) {
+        handleReorderVideo(draggedVideoId, dropTargetId);
+        if (navigator.vibrate) {
+             navigator.vibrate([50, 50, 50]);
+        }
+    }
+
+    // Reset state variables
+    isTouchDragging = false;
+    draggedVideoId = null;
+    touchDraggedElement = null;
+    dragTargetElement = null;
+}
+
+// --- Drag and Drop (Playlists) ---
+let draggedPlaylistId = null;
+let dragTargetPlaylistElement = null;
+
+function handlePlaylistDragStart(event) {
+    const playlistItem = event.target.closest('.playlist-item');
+    if (playlistItem && playlistItem.draggable) {
+        // Prevent dragging if clicking on controls inside the item
+        if (event.target.closest('.controls')) {
+            event.preventDefault();
+            return;
+        }
+        draggedPlaylistId = parseInt(playlistItem.dataset.id);
+        event.dataTransfer.effectAllowed = 'move';
+        // event.dataTransfer.setData('text/plain', draggedPlaylistId); // Optional
+        setTimeout(() => playlistItem.classList.add('dragging'), 0);
+        dragTargetPlaylistElement = null; // Reset target
+    }
+}
+
+function handlePlaylistDragEnd(event) {
+    const playlistItem = event.target.closest('.playlist-item.dragging');
+    if (playlistItem) {
+        playlistItem.classList.remove('dragging');
+    }
+    clearPlaylistDragOverStyles();
+    draggedPlaylistId = null;
+    dragTargetPlaylistElement = null;
+}
+
+function handlePlaylistDragOver(event) {
+    event.preventDefault(); // Allow drop
+    if (!draggedPlaylistId) return;
+    event.dataTransfer.dropEffect = 'move';
+
+    const targetItem = event.target.closest('.playlist-item');
+    let currentTarget = null;
+
+    if (targetItem && targetItem.draggable && parseInt(targetItem.dataset.id) !== draggedPlaylistId) {
+         currentTarget = targetItem;
+    }
+
+    if (currentTarget !== dragTargetPlaylistElement) {
+        clearPlaylistDragOverStyles(); // Clear previous target
+        if (currentTarget) {
+            currentTarget.classList.add('drag-over'); // Highlight new target
+        }
+        dragTargetPlaylistElement = currentTarget; // Track new target
+    }
+
+     if (!currentTarget) {
+         event.dataTransfer.dropEffect = 'none'; // Cannot drop here
+     }
+}
+
+function handlePlaylistDragLeave(event) {
+    // Clear styles only if leaving the list container bounds
+    if (!event.relatedTarget || !playlistListEl.contains(event.relatedTarget)) {
+        clearPlaylistDragOverStyles();
+        dragTargetPlaylistElement = null;
+    }
+}
+
+function handlePlaylistDrop(event) {
+    event.preventDefault();
+    const dropTargetId = dragTargetPlaylistElement ? parseInt(dragTargetPlaylistElement.dataset.id) : null;
+
+    clearPlaylistDragOverStyles(); // Always clear styles
+
+    if (draggedPlaylistId && dropTargetId && dropTargetId !== draggedPlaylistId) {
+        handleReorderPlaylist(draggedPlaylistId, dropTargetId);
+    }
+
+    // Resetting state happens in handlePlaylistDragEnd
+}
+
+function clearPlaylistDragOverStyles() {
+    const highlightedItem = playlistListEl.querySelector('.playlist-item.drag-over');
+    if (highlightedItem) {
+        highlightedItem.classList.remove('drag-over');
+    }
+     if (dragTargetPlaylistElement) {
+         dragTargetPlaylistElement.classList.remove('drag-over');
+     }
+}
+
+function handleReorderPlaylist(playlistIdToMove, targetPlaylistId) {
+    const playlistToMoveIndex = playlists.findIndex(p => p.id === playlistIdToMove);
+    if (playlistToMoveIndex === -1) return;
+
+    const [playlistToMove] = playlists.splice(playlistToMoveIndex, 1); // Remove the playlist
+
+    // Find the target's NEW index after the splice
+    const targetIndex = playlists.findIndex(p => p.id === targetPlaylistId);
+
+    if (targetIndex !== -1) {
+        // Insert before the target's new position
+        playlists.splice(targetIndex, 0, playlistToMove);
+    } else {
+        // Fallback: append to end if target not found (shouldn't happen in valid drop)
+        console.warn("Playlist reorder target not found after splice, appending to end.");
+        playlists.push(playlistToMove);
+    }
+
+    savePlaylists();
+    renderPlaylists(); // Re-render the list with the new order
+    showToast('Playlist order updated.', 'info', 1500); // Short confirmation
 }
 
 // --- Start the app ---
