@@ -841,14 +841,9 @@ function handleReorderVideo(videoIdToMove, targetVideoId) {
 }
 
 function playVideo(videoId) {
-    // Ensure the player container is visible first
-    // UNLESS we are in audio-only mode
     if (!isAudioOnlyMode) {
         playerWrapperEl.classList.remove('hidden');
     } else {
-        // If audio-only is active, ensure the wrapper *is* shown
-        // (because the CSS will hide the inner container)
-        // but don't scroll to it.
          playerWrapperEl.classList.remove('hidden');
     }
 
@@ -860,13 +855,8 @@ function playVideo(videoId) {
     if (ytPlayer && isPlayerReady) {
         console.log("Player exists and is ready. Loading and playing video:", videoId);
         try {
-            // Use loadVideoById to load the video
             ytPlayer.loadVideoById(videoId);
-            // Explicitly call playVideo() right after loading.
-            // This might reinforce the user-initiated playback signal on some browsers.
-            ytPlayer.playVideo();
 
-            // Scroll player into view smoothly, but only if not in audio-only mode
             if (!isAudioOnlyMode) {
                 setTimeout(() => {
                     if (playerWrapperEl.offsetParent !== null) { // Check if element is visible before scrolling
@@ -881,11 +871,8 @@ function playVideo(videoId) {
             videoIdToPlayOnReady = null; // Clear any queue if loading failed
         }
     } else {
-        // Player not ready or not initialized yet, queue the video ID
         console.log(`Player not ready (Player: ${!!ytPlayer}, Ready: ${isPlayerReady}). Queuing video:`, videoId);
         videoIdToPlayOnReady = videoId;
-        // The onPlayerReady handler will call playVideo(videoIdToPlayOnReady) again,
-        // and the playVideo logic above will then execute, including the playVideo() call.
     }
 
     // --- Media Session Update ---
