@@ -7,8 +7,9 @@
 
             /* Transitions */
             --transition-speed: 0.2s;
-            --transition-timing: ease-in-out;
-            --transition-default: all var(--transition-speed) var(--transition-timing);
+            --transition-timing: cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smooth ease-out-quad */
+            --transition-timing-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* Subtle overshoot/spring for bounces */
+            --transition-fast: 0.15s;
 
             /* Radii */
             --border-radius-sm: 4px;
@@ -20,14 +21,15 @@
             /* Sidebar */
             --sidebar-min-width: 255px;
             --sidebar-max-width: 500px;
-            --sidebar-default-width: 300px;
+            --sidebar-default-width: 255px;
             --sidebar-resize-handle-width: 5px;
 
-            /* Shadows (More Subtle) */
-            --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
-            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
-            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.05);
-            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.06);
+            /* Shadows (More Pronounced for Depth) */
+            --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 1px rgba(0, 0, 0, 0.05);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15), 0 5px 10px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.2), 0 10px 20px rgba(0, 0, 0, 0.15);
 
             /* Z-Indexes */
             --z-sticky: 10;
@@ -39,9 +41,9 @@
 
 
             /* --- Light Theme --- */
-            --primary-color: #2fa1d3;
-            --primary-color-dark: #49a5c1;
-            --primary-color-light: #ebfaff;
+            --primary-color: #D32F2F;
+            --primary-color-dark: #B71C1C;
+            --primary-color-light: #FFEBEE;
             /* Keep this light for contrast */
             --background-color: #ffffff;
             /* Pure white */
@@ -74,9 +76,9 @@
         }
 
         html[data-theme="dark"] {
-            --primary-color: #4299bb;
+            --primary-color: #E57373;
             /* Keep red vibrant */
-            --primary-color-dark: #378faf;
+            --primary-color-dark: #bb6262;
             /* Lighter red for hover/active */
             --primary-color-light: rgba(229, 115, 115, 0.1);
             /* Subtle highlight */
@@ -98,11 +100,11 @@
             /* Second Color */
             --border-color-second: #333333;
             /* Button Color */
-            --button-color: #18181b;;
+            --button-color: #18181b;
             /* Subtle inner border */
             --hover-bg-color: #2c2c2c;
             /* Darker hover */
-            --focus-ring-color: rgb(115 183 229 / 30%);
+            --focus-ring-color: rgba(229, 115, 115, 0.3);
             /* Keep focus visible */
             --icon-color: #a0a0a0;
             --icon-color-hover: var(--text-color);
@@ -113,6 +115,7 @@
             --resizer-hover-color: var(--primary-color);
             /* Add Primary RGB for potential use */
             --primary-color-rgb: 229, 115, 115;
+            --video-card-background: #18181b;
         }
 
 
@@ -142,6 +145,24 @@
             overscroll-behavior-y: contain;
             height: 100%;
             min-height: 100%;
+            opacity: 0;
+            animation: fadeIn 0.5s var(--transition-timing) forwards; /* Use new timing */
+            padding-top: env(safe-area-inset-top, 0px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            padding-left: env(safe-area-inset-left, 0px);
+            padding-right: env(safe-area-inset-right, 0px);
+        }
+
+        /* Disable animation for iOS PWA */
+        html.ios-pwa body {
+            opacity: 1 !important;
+            animation: none !important;
+        }
+
+        /* Apple-like fade-in animation */
+        @keyframes fadeIn {
+            from { opacity: 0; margin-top: 10px; }
+            to { opacity: 1; margin-top: 0; }
         }
 
         img,
@@ -186,9 +207,9 @@
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
-            transition: var(--transition-default);
-            transition-property: background-color, border-color;
+            transition: background-color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing);
             position: relative;
+            will-change: background-color, border-color;
         }
 
         /* Sidebar Resizer */
@@ -208,12 +229,13 @@
             content: "";
             position: absolute;
             top: 0;
-            left: 1px;
-            width: 3px;
+            left: 0px; /* Adjust to expand from center */
+            width: 5px; /* Make it wider on hover/active */
             height: 100%;
             background-color: var(--resizer-hover-color);
-            opacity: 0.7;
-            transition: background-color 0.2s ease;
+            opacity: 1; /* Make it fully opaque */
+            transition: background-color var(--transition-speed) var(--transition-timing), width var(--transition-speed) var(--transition-timing), opacity var(--transition-speed) var(--transition-timing), left var(--transition-speed) var(--transition-timing);
+            border-radius: 2px; /* Slight roundness */
         }
 
         .sidebar-resizer::after {
@@ -225,7 +247,8 @@
             height: 100%;
             background-color: var(--resizer-color);
             opacity: 0.3;
-            transition: background-color 0.2s ease;
+            transition: background-color var(--transition-speed) var(--transition-timing), width var(--transition-speed) var(--transition-timing), opacity var(--transition-speed) var(--transition-timing), left var(--transition-speed) var(--transition-timing);
+            border-radius: 2px;
         }
 
         .sidebar-content {
@@ -237,17 +260,15 @@
             border-radius: var(--border-radius-lg); /* Added border-radius */
             margin: 10px 10px 5px 10px; /* Added margin (Top, Sides, Bottom) */
             background-color: var(--surface-color); /* Ensure background color */
-            transition: var(--transition-default); /* Added transition */
-            transition-property: background-color, border-color, padding, margin; /* Added transition properties */
+            transition: background-color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing), padding var(--transition-speed) var(--transition-timing), margin var(--transition-speed) var(--transition-timing); /* Added transition */
         }
 
         .sidebar-footer {
             padding: 15px; /* Adjusted padding */
             /* border-top: 1px solid var(--border-color-light); */ /* Removed original border-top */
             flex-shrink: 0;
-            background-color: var(--surface-color);
-            transition: var(--transition-default);
-            transition-property: background-color, border-color, padding, margin; /* Added transition properties */
+            background-color: var(--background-color);
+            transition: background-color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing), padding var(--transition-speed) var(--transition-timing), margin var(--transition-speed) var(--transition-timing); /* Added transition */
             border: 1px solid var(--border-color-light); /* Added border */
             border-radius: var(--border-radius-lg); /* Added border-radius */
             margin: 5px 10px 10px 10px; /* Added margin (Top, Sides, Bottom) */
@@ -299,8 +320,7 @@
             font-size: 0.9rem;
             background-color: var(--button-color);
             color: var(--text-color);
-            transition: var(--transition-default);
-            transition-property: border-color, box-shadow, background-color, color;
+            transition: border-color var(--transition-speed) var(--transition-timing), box-shadow var(--transition-speed) var(--transition-timing), background-color var(--transition-speed) var(--transition-timing), color var(--transition-speed) var(--transition-timing);
         }
 
         input[type="text"]:focus,
@@ -330,7 +350,7 @@
 
         /* Button Styles */
         button {
-            background-color: #26a3b5;
+            background-color: #d75f5f;
             color: white;
             border: none;
             padding: 8px 16px;
@@ -338,8 +358,10 @@
             cursor: pointer;
             font-size: 0.9rem;
             font-weight: 600;
-            transition: var(--transition-default);
-            transition-property: background-color, transform, box-shadow, opacity;
+            transition: background-color var(--transition-speed) var(--transition-timing),
+                        transform var(--transition-speed) var(--transition-timing-spring), /* Use spring for transform */
+                        box-shadow var(--transition-speed) var(--transition-timing-spring), /* Use spring for shadow */
+                        opacity var(--transition-speed) var(--transition-timing);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -347,16 +369,17 @@
             box-shadow: var(--shadow-xs);
             line-height: 1.4;
             /* Prevent text jump on loading */
+            will-change: transform, background-color, box-shadow; /* Hint to the browser for better performance */
         }
 
         button:not(:disabled):hover {
-            background-color: var(--primary-color-dark);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-sm);
+            transform: translateY(-2px) scale(1.02) translateZ(0); /* Add translateZ(0) for GPU acceleration */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #bb6262;
         }
 
         button:not(:disabled):active {
-            transform: translateY(0);
+            transform: translateY(0px) translateZ(0); /* Ensure consistency and make it "press" in */
             box-shadow: var(--shadow-xs);
         }
 
@@ -445,19 +468,20 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: background-color var(--transition-speed) var(--transition-timing), color var(--transition-speed) var(--transition-timing), border-color 0.1s ease-out;
+            transition: transform 0.3s var(--transition-timing), opacity 0.3s var(--transition-timing), background-color 0.2s var(--transition-timing), border-color 0.2s var(--transition-timing), box-shadow 0.2s var(--transition-timing); /* Add shadow transition */
             position: relative;
             font-size: 0.9rem;
             border: 1px solid transparent;
+            will-change: transform, background-color, box-shadow;
         }
 
         .playlist-item:hover {
             background-color: var(--hover-bg-color);
-            border-color: var(--border-color-light);
+            box-shadow: var(--shadow-xs); /* Slight shadow */
         }
 
         .playlist-item.active {
-            background-color: rgb(115 159 229 / 10%);
+            background-color: var(--primary-color-light);
             color: var(--primary-color-dark);
             font-weight: 600;
             border-color: var(--primary-color-light);
@@ -465,12 +489,7 @@
 
         html[data-theme="dark"] .playlist-item.active {
             color: var(--primary-color);
-            border-color: rgb(115 196 229 / 30%);
-        }
-
-        /* Playlist Drag & Drop Styles */
-        .playlist-item[draggable="true"] {
-            cursor: grab;
+            border-color: rgba(var(--primary-color-rgb), 0.3);
         }
 
         .playlist-item.dragging {
@@ -479,13 +498,16 @@
             background: var(--surface-color-alt);
             box-shadow: var(--shadow-md);
             border-color: var(--border-color);
+            will-change: transform, opacity;
         }
 
         /* Playlist drag-over style (similar to video card drag-over) */
         .playlist-item.drag-over {
             outline: 2px dashed var(--primary-color);
             outline-offset: -2px;
-            background-color: var(--hover-bg-color);
+            background-color: var(--primary-color-light); /* Use a more active background */
+            transform: scale(1.01); /* Subtle "target" scale */
+            transition: all var(--transition-fast) ease-in-out; /* Quick transition for drag feedback */
         }
 
         .playlist-name {
@@ -494,7 +516,7 @@
             text-overflow: ellipsis;
             margin-right: 8px;
             flex-grow: 1;
-            pointer-events: none;
+            /* pointer-events: none; */ /* Removed to allow clicking name to select */
         }
 
         .playlist-count {
@@ -521,6 +543,7 @@
             transition: opacity var(--transition-speed) var(--transition-timing);
             flex-shrink: 0;
             margin-left: 8px;
+            align-items: center; /* Align controls vertically */
         }
 
         .playlist-item:hover .controls,
@@ -530,7 +553,8 @@
             opacity: 1;
         }
 
-        .playlist-item .controls button {
+        .playlist-item .controls button,
+        .playlist-item .controls .playlist-drag-handle { /* Include drag handle */
             /* Make control buttons smaller */
             padding: 4px;
             font-size: 0.9rem;
@@ -541,19 +565,31 @@
             box-shadow: none;
         }
 
-        .playlist-item .controls button:hover {
+        .playlist-item .controls button:hover,
+        .playlist-item .controls .playlist-drag-handle:hover { /* Include drag handle */
             background-color: var(--surface-color-alt);
             color: var(--text-color);
         }
 
-        html[data-theme="dark"] .playlist-item .controls button:hover {
+        html[data-theme="dark"] .playlist-item .controls button:hover,
+        html[data-theme="dark"] .playlist-item .controls .playlist-drag-handle:hover {
             background-color: var(--background-color);
         }
 
-        .playlist-item .controls button svg {
+        .playlist-item .controls button svg,
+        .playlist-item .controls .playlist-drag-handle svg { /* Include drag handle */
             width: 0.9em;
             height: 0.9em;
         }
+
+        .playlist-drag-handle {
+            cursor: grab; /* Use grab cursor for the handle */
+        }
+        .playlist-drag-handle:active {
+            cursor: grabbing; /* Use grabbing cursor while dragging */
+            color: var(--text-color); /* Change color while active */
+        }
+
 
         /* --- Main Content --- */
         .main-content {
@@ -564,6 +600,7 @@
             border: 1px solid var(--border-color-light);
             border-radius: var(--border-radius-lg);
             margin: 10px 10px 10px 10px;
+            will-change: background-color;
         }
 
         .main-header {
@@ -575,7 +612,9 @@
             gap: 16px;
             padding-bottom: 16px;
             border-bottom: 1px solid var(--border-color-light);
-            transition: border-color var(--transition-speed) var(--transition-timing);
+            transition: all var(--transition-speed) var(--transition-timing);
+            opacity: 0;
+            animation: fadeIn var(--transition-speed) var(--transition-timing) 0.1s forwards; /* Use new timing */
         }
 
         #currentPlaylistTitle {
@@ -674,8 +713,7 @@
             box-shadow: var(--shadow-sm);
             margin-bottom: 20px;
             border: 1px solid var(--border-color-light);
-            transition: var(--transition-default);
-            transition-property: background-color, border-color, box-shadow;
+            transition: background-color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing), box-shadow var(--transition-speed) var(--transition-timing);
             display: flex;
             align-items: center;
             gap: 10px;
@@ -703,12 +741,10 @@
             border-radius: var(--border-radius-lg);
             overflow: hidden;
             box-shadow: var(--shadow-md);
-            position: sticky;
-            top: 20px;
+            position: relative;
             z-index: var(--z-sticky);
             border: 1px solid var(--border-color-light);
-            transition: var(--transition-default);
-            transition-property: border-color, box-shadow;
+            transition: border-color var(--transition-speed) var(--transition-timing), box-shadow var(--transition-speed) var(--transition-timing);
             background-color: #000;
             /* Black background behind player */
         }
@@ -718,7 +754,6 @@
             top: 5px;
             right: 5px;
             z-index: calc(var(--z-sticky) + 1);
-            /* Above player controls potentially */
             background-color: rgba(0, 0, 0, 0.5);
             color: white;
             border: none;
@@ -732,6 +767,7 @@
             cursor: pointer;
             opacity: 0.7;
             transition: opacity 0.2s ease, background-color 0.2s ease;
+            transform: translateY(0);
         }
 
         .close-player-btn:hover {
@@ -752,6 +788,7 @@
             height: 0;
             overflow: hidden;
             transition: opacity var(--transition-speed) ease-in-out, height var(--transition-speed) ease-in-out;
+            will-change: opacity, height;
         }
 
         /* Style to hide the video when audio-only is active */
@@ -764,21 +801,56 @@
 
         /* Keep the wrapper visible but maybe add an indicator? */
         body.audio-only-active .player-wrapper {
-            min-height: 30px;
+            min-height: auto;
+            padding: 5px 40px 5px 15px;
             background-color: var(--surface-color-alt);
             box-shadow: var(--shadow-sm);
+            display: block;
+            position: sticky;
         }
 
-        /* Ensure close button is still visible and positioned correctly */
+        /* New styles for audio-only info */
+        .audio-only-info {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--text-color-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .audio-only-info .audio-title {
+            font-weight: 600;
+            color: var(--text-color);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        body.audio-only-active .audio-only-info {
+            display: flex;
+        }
+        /* End new styles */
+
+        /* Audio-only mode close button */
         body.audio-only-active .close-player-btn {
             top: 50%;
-            transform: translateY(-50%);
+            right: 8px;
+            transform: translateY(-50%); /* Center vertically using transform */
             background-color: transparent;
             color: var(--icon-color);
+            /* Add these to prevent layout shift on hover */
+            margin: 0;
+            transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
         }
+
         body.audio-only-active .close-player-btn:hover {
             background-color: var(--hover-bg-color);
             color: var(--icon-color-hover);
+            /* Maintain position on hover */
+            transform: translateY(-50%);
         }
 
         #player {
@@ -795,32 +867,32 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
             /* Smaller min */
-            gap: 20px;
+            gap: 16px;
             margin-top: 24px;
+            transition: all 0.3s ease;
+            will-change: transform, opacity;
         }
 
         .video-card {
-            border-radius: var(
-            --border-radius-md);
+            background-color: var(--video-card-background);
+            border-radius: var(--border-radius-md);
             overflow: hidden;
-            box-shadow: var(
-            --shadow-xs);
-            background-color: var(--button-color);
+            box-shadow: var(--shadow-xs);
             cursor: pointer;
-            transition: var(
-            --transition-default);
-            transition-property: transform, box-shadow, background-color, border-color;
+            transition: transform 0.3s var(--transition-timing-spring), opacity 0.3s var(--transition-timing), box-shadow 0.3s var(--transition-timing); /* Use spring for transform, smooth for others */
             display: flex;
             flex-direction: column;
             position: relative;
             border: 1px solid transparent;
             /* Placeholder for hover/drag */
+            will-change: transform, opacity, box-shadow;
         }
 
         .video-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-            border-color: var(--border-color);
+            transform: translateY(-5px) scale(1.02) translateZ(0);
+            opacity: 0.98; /* Slightly less opaque */
+            box-shadow: var(--shadow-md); /* More pronounced shadow on hover */
+            will-change: transform, opacity, box-shadow;
         }
 
         /* Drag & Drop Styles */
@@ -831,6 +903,7 @@
             cursor: grabbing;
             /* border-color: var(--primary-color); */ /* Removed border */
             background: var(--surface-color-alt);
+            will-change: transform, opacity;
         }
 
         /* Style for the active/playing video card */
@@ -866,6 +939,12 @@
             /* Use border or outline for drop indicator */
             outline: 2px dashed var(--primary-color);
             outline-offset: -2px; /* Inside the card */
+            transform: scale(1.01); /* Subtle "target" scale */
+            background-color: var(--primary-color-light); /* Use a more active background */
+            transition: all var(--transition-fast) ease-in-out; /* Quick transition for drag feedback */
+        }
+        html[data-theme="dark"] .video-card.drag-over {
+            background-color: rgba(var(--primary-color-rgb), 0.2);
         }
 
 
@@ -980,8 +1059,7 @@
             border-radius: var(--border-radius-lg);
             box-shadow: var(--shadow-sm);
             border: 1px dashed var(--border-color);
-            transition: var(--transition-default);
-            transition-property: background-color, color, border-color, box-shadow;
+            transition: background-color var(--transition-speed) var(--transition-timing), color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing), box-shadow var(--transition-speed) var(--transition-timing);
         }
 
         /* Settings Area in Sidebar Footer */
@@ -1047,10 +1125,11 @@
             position: fixed;
             bottom: 20px;
             right: 20px;
-            z-index: var(--z-toast);
+            z-index: 9999;
             display: flex;
             flex-direction: column;
             gap: 10px;
+            align-items: flex-end;
         }
 
         .toast {
@@ -1182,7 +1261,7 @@
 
             /* Adjust header padding on mobile */
              .sidebar-header {
-                 padding: 0 10px; /* Keep horizontal padding */
+                 padding: 0 10px; /* Keep horizontal padding */ 
              }
 
             .sidebar-footer {
@@ -1255,12 +1334,12 @@
             }
 
             .player-wrapper {
-                position: relative;
-                /* Change from sticky */
-                top: 0;
+                position: sticky;
+                top: calc(10px + env(safe-area-inset-top, 0px)); /* Adjust top position for safe area */
                 margin-top: 16px;
                 margin-bottom: 16px;
                 /* Keep other styles like border-radius, overflow */
+                z-index: var(--z-sticky);
             }
 
             .video-grid {
@@ -1284,6 +1363,12 @@
                 opacity: 1;
             }
 
+            /* Hide playlist drag handle on mobile */
+            .playlist-drag-handle {
+                display: none;
+            }
+
+
             .video-controls .drag-handle {
 
                 /* Hide drag handle on mobile */
@@ -1305,17 +1390,18 @@
             }
 
             .toast-container {
-                bottom: 10px;
-                right: 10px;
-                left: 10px;
-                /* Allow toasts to span more width */
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                right: auto;
+                max-width: calc(100% - 40px);
+                width: 100%;
                 align-items: center;
-                /* Center toasts horizontally */
             }
 
             .toast {
-                width: auto;
-                max-width: 90%;
+                width: 100%;
+                max-width: 400px;
             }
 
             /* Increase touch target size for icon buttons */
@@ -1334,10 +1420,9 @@
 
             /* --- Mobile Tap Feedback --- */
             .playlist-item:active {
-                background-color: var(--hover-bg-color);
-                /* Reuse hover color for feedback */
-                transition: background-color 0.05s ease-out;
-                /* Faster feedback transition */
+                background-color: var(--primary-color-light); /* More direct feedback */
+                transform: translateY(0); /* Press back down */
+                transition: background-color 0.05s ease-out, transform 0.05s ease-out;
             }
 
             .video-card:active {
@@ -1349,6 +1434,18 @@
 
             /* --- End Mobile Tap Feedback --- */
 
+            /* Hide the new audio-only info text on mobile as well if desired */
+            .audio-only-info {
+                /* display: none; */ /* Uncomment if you want to hide it on mobile */
+            }
+            body.audio-only-active .player-wrapper {
+                padding: 5px 40px 5px 10px; /* Adjust mobile padding */
+                padding-top: calc(5px + env(safe-area-inset-top, 0px)); /* Adjust top padding for safe area */
+            }
+
+            .playlist-item:hover {
+                background-color: inherit; /* Disables the hover effect on mobile */
+            }
         }
 
         /* Further adjustments for very small screens */
@@ -1391,8 +1488,8 @@
             border-radius: var(--border-radius-md);
             box-shadow: var(--shadow-xs);
             border: 1px solid var(--border-color-light);
-            transition: var(--transition-default);
-            transition-property: background-color, border-color, box-shadow;
+            transition: background-color var(--transition-speed) var(--transition-timing), border-color var(--transition-speed) var(--transition-timing), box-shadow var(--transition-speed) var(--transition-timing);
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); /* Adjust padding for safe area */
         }
 
         .pagination-controls button {
@@ -1429,4 +1526,50 @@
             min-width: 80px;
             /* Approx width */
             text-align: center;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Smooth transitions for theme changes */
+        html[data-theme="dark"],
+        html[data-theme="light"] {
+            transition: background-color 0.5s var(--transition-timing), color 0.5s var(--transition-timing);
+            will-change: background-color, color;
+        }
+
+        @keyframes scaleUp {
+            0% {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .playlist-item.added {
+            animation: scaleUp 0.3s var(--transition-timing-spring) forwards; /* Apply spring timing */
+            will-change: transform, opacity;
+        }
+
+        .video-card.added {
+            animation: scaleUp 0.3s var(--transition-timing-spring) forwards; /* Apply spring timing */
+            will-change: transform, opacity;
+        }
+
+        /* Promote resizer to GPU layer */
+        .sidebar-resizer:hover::after {
+            transform: translate3d(0, 0, 0);
+            will-change: transform;
+        }
+
+        .header {
+            padding-top: env(safe-area-inset-top, 0px);
+        }
+        .footer {
+            padding-bottom: env(safe-area-inset-bottom, 0px);
         }
